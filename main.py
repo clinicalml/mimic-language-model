@@ -100,7 +100,7 @@ class PTBModel(object):
         tvars = tf.trainable_variables()
         grads, _ = tf.clip_by_global_norm(tf.gradients(cost, tvars),
                                           config.max_grad_norm)
-        optimizer = tf.train.GradientDescentOptimizer(self.lr)
+        optimizer = tf.train.AdamOptimizer(self.lr)
         self._train_op = optimizer.apply_gradients(zip(grads, tvars))
 
     def assign_lr(self, session, lr_value):
@@ -138,7 +138,7 @@ class PTBModel(object):
 class SmallConfig(object):
     """Small config."""
     init_scale = 0.1
-    learning_rate = 1.0
+    learning_rate = 1e-3
     max_grad_norm = 5
     num_layers = 2
     num_steps = 20
@@ -146,7 +146,7 @@ class SmallConfig(object):
     max_epoch = 4
     max_max_epoch = 13
     keep_prob = 1.0
-    lr_decay = 0.5
+    #lr_decay = 1.0
     batch_size = 20
     vocab_size = 10000
 
@@ -154,7 +154,7 @@ class SmallConfig(object):
 class MediumConfig(object):
     """Medium config."""
     init_scale = 0.05
-    learning_rate = 1.0
+    learning_rate = 1e-3
     max_grad_norm = 5
     num_layers = 2
     num_steps = 35
@@ -162,7 +162,7 @@ class MediumConfig(object):
     max_epoch = 6
     max_max_epoch = 39
     keep_prob = 0.5
-    lr_decay = 0.8
+    #lr_decay = 1.0
     batch_size = 20
     vocab_size = 10000
 
@@ -170,7 +170,7 @@ class MediumConfig(object):
 class LargeConfig(object):
     """Large config."""
     init_scale = 0.04
-    learning_rate = 1.0
+    learning_rate = 1e-3
     max_grad_norm = 10
     num_layers = 2
     num_steps = 35
@@ -178,7 +178,7 @@ class LargeConfig(object):
     max_epoch = 14
     max_max_epoch = 55
     keep_prob = 0.35
-    lr_decay = 1 / 1.15
+    #lr_decay = 1.0
     batch_size = 20
     vocab_size = 10000
 
@@ -186,7 +186,7 @@ class LargeConfig(object):
 class TestConfig(object):
     """Tiny config, for testing."""
     init_scale = 0.1
-    learning_rate = 1.0
+    learning_rate = 1e-3
     max_grad_norm = 1
     num_layers = 1
     num_steps = 2
@@ -194,7 +194,7 @@ class TestConfig(object):
     max_epoch = 1
     max_max_epoch = 1
     keep_prob = 1.0
-    lr_decay = 0.5
+    #lr_decay = 1.0
     batch_size = 20
     vocab_size = 10000
 
@@ -263,8 +263,8 @@ def main(_):
         tf.initialize_all_variables().run()
 
         for i in range(config.max_max_epoch):
-            lr_decay = config.lr_decay ** max(i - config.max_epoch, 0.0)
-            m.assign_lr(session, config.learning_rate * lr_decay)
+            #lr_decay = config.lr_decay ** max(i - config.max_epoch, 0.0)
+            m.assign_lr(session, config.learning_rate) #* lr_decay)
 
             print("Epoch: %d Learning rate: %.3f" % (i + 1, session.run(m.lr)))
             train_perplexity = run_epoch(session, m, train_data, m.train_op,
