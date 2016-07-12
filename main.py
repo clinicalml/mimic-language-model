@@ -23,21 +23,19 @@ import time
 import numpy as np
 import tensorflow as tf
 
+from config import Config
 import reader
 
 flags = tf.flags
 logging = tf.logging
 
-flags.DEFINE_string(
-        "model", "small",
-        "A type of model. Possible options are: small, medium, large.")
-flags.DEFINE_string("data_path", None, "data_path")
+flags.DEFINE_string("data_path", "data", "data_path")
 
 FLAGS = flags.FLAGS
 
 
-class PTBModel(object):
-    """The PTB model."""
+class LMModel(object):
+    """The language model."""
 
     def __init__(self, is_training, config):
         self.batch_size = batch_size = config.batch_size
@@ -135,70 +133,6 @@ class PTBModel(object):
         return self._train_op
 
 
-class SmallConfig(object):
-    """Small config."""
-    init_scale = 0.1
-    learning_rate = 1e-3
-    max_grad_norm = 5
-    num_layers = 2
-    num_steps = 20
-    hidden_size = 200
-    max_epoch = 4
-    max_max_epoch = 13
-    keep_prob = 1.0
-    #lr_decay = 1.0
-    batch_size = 20
-    vocab_size = 10000
-
-
-class MediumConfig(object):
-    """Medium config."""
-    init_scale = 0.05
-    learning_rate = 1e-3
-    max_grad_norm = 5
-    num_layers = 2
-    num_steps = 35
-    hidden_size = 650
-    max_epoch = 6
-    max_max_epoch = 39
-    keep_prob = 0.5
-    #lr_decay = 1.0
-    batch_size = 20
-    vocab_size = 10000
-
-
-class LargeConfig(object):
-    """Large config."""
-    init_scale = 0.04
-    learning_rate = 1e-3
-    max_grad_norm = 10
-    num_layers = 2
-    num_steps = 35
-    hidden_size = 1500
-    max_epoch = 14
-    max_max_epoch = 55
-    keep_prob = 0.35
-    #lr_decay = 1.0
-    batch_size = 20
-    vocab_size = 10000
-
-
-class TestConfig(object):
-    """Tiny config, for testing."""
-    init_scale = 0.1
-    learning_rate = 1e-3
-    max_grad_norm = 1
-    num_layers = 1
-    num_steps = 2
-    hidden_size = 2
-    max_epoch = 1
-    max_max_epoch = 1
-    keep_prob = 1.0
-    #lr_decay = 1.0
-    batch_size = 20
-    vocab_size = 10000
-
-
 def run_epoch(session, m, data, eval_op, verbose=False):
     """Runs the model on the given data."""
     epoch_size = ((len(data) // m.batch_size) - 1) // m.num_steps
@@ -223,19 +157,6 @@ def run_epoch(session, m, data, eval_op, verbose=False):
     return np.exp(costs / iters)
 
 
-def get_config():
-    if FLAGS.model == "small":
-        return SmallConfig()
-    elif FLAGS.model == "medium":
-        return MediumConfig()
-    elif FLAGS.model == "large":
-        return LargeConfig()
-    elif FLAGS.model == "test":
-        return TestConfig()
-    else:
-        raise ValueError("Invalid model: %s", FLAGS.model)
-
-
 def main(_):
     if not FLAGS.data_path:
         raise ValueError("Must set --data_path to PTB data directory")
@@ -243,8 +164,8 @@ def main(_):
     raw_data = reader.ptb_raw_data(FLAGS.data_path)
     train_data, valid_data, test_data, _ = raw_data
 
-    config = get_config()
-    eval_config = get_config()
+    config = Config()
+    eval_config = Config()
     eval_config.batch_size = 1
     eval_config.num_steps = 1
 
@@ -255,10 +176,10 @@ def main(_):
         initializer = tf.random_uniform_initializer(-config.init_scale,
                                                     config.init_scale)
         with tf.variable_scope("model", reuse=None, initializer=initializer):
-            m = PTBModel(is_training=True, config=config)
+            m = LMModel(is_training=True, config=config)
         with tf.variable_scope("model", reuse=True, initializer=initializer):
-            mvalid = PTBModel(is_training=False, config=config)
-            mtest = PTBModel(is_training=False, config=eval_config)
+            mvalid = LMModel(is_training=False, config=config)
+            mtest = LMModel(is_training=False, config=eval_config)
 
         tf.initialize_all_variables().run()
 
