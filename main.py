@@ -39,8 +39,8 @@ class LMModel(object):
         size = config.hidden_size
         vocab_size = config.vocab_size
 
-        self._input_data = tf.placeholder(tf.int32, [batch_size, num_steps])
-        self._targets = tf.placeholder(tf.int32, [batch_size, num_steps])
+        self.input_data = tf.placeholder(tf.int32, [batch_size, num_steps])
+        self.targets = tf.placeholder(tf.int32, [batch_size, num_steps])
 
         lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(size)
         if is_training and config.keep_prob < 1:
@@ -48,7 +48,7 @@ class LMModel(object):
                     lstm_cell, output_keep_prob=config.keep_prob)
         cell = tf.nn.rnn_cell.MultiRNNCell([lstm_cell] * config.num_layers)
 
-        self._initial_state = cell.zero_state(batch_size, tf.float32)
+        self.initial_state = cell.zero_state(batch_size, tf.float32)
 
         with tf.device("/cpu:0"):
             embedding = tf.get_variable("embedding", [vocab_size, config.learn_emb_size])
@@ -56,13 +56,13 @@ class LMModel(object):
                 cembedding = tf.constant(vocab.embeddings, dtype=embedding.dtype,
                                          name="pre_embedding")
                 embedding = tf.concat(1, [embedding, cembedding])
-            inputs = tf.nn.embedding_lookup(embedding, self._input_data)
+            inputs = tf.nn.embedding_lookup(embedding, self.input_data)
 
         if is_training and config.keep_prob < 1:
             inputs = tf.nn.dropout(inputs, config.keep_prob)
 
         inputs = [tf.squeeze(input_, [1]) for input_ in tf.split(1, num_steps, inputs)]
-        outputs, state = tf.nn.rnn(cell, inputs, initial_state=self._initial_state)
+        outputs, state = tf.nn.rnn(cell, inputs, initial_state=self.initial_state)
 
         output = tf.reshape(tf.concat(1, outputs), [-1, size])
         softmax_w = tf.get_variable("softmax_w", [size, vocab_size])
@@ -70,51 +70,23 @@ class LMModel(object):
         logits = tf.matmul(output, softmax_w) + softmax_b
         loss = tf.nn.seq2seq.sequence_loss_by_example(
                 [logits],
-                [tf.reshape(self._targets, [-1])],
+                [tf.reshape(self.targets, [-1])],
                 [tf.ones([batch_size * num_steps])])
-        self._cost = cost = tf.reduce_sum(loss) / batch_size
-        self._final_state = state
+        self.cost = cost = tf.reduce_sum(loss) / batch_size
+        self.final_state = state
 
         if not is_training:
             return
 
-        self._lr = tf.Variable(0.0, trainable=False)
+        self.lr = tf.Variable(0.0, trainable=False)
         tvars = tf.trainable_variables()
         grads, _ = tf.clip_by_global_norm(tf.gradients(cost, tvars),
                                           config.max_grad_norm)
         optimizer = tf.train.AdamOptimizer(self.lr)
-        self._train_op = optimizer.apply_gradients(zip(grads, tvars))
+        self.train_op = optimizer.apply_gradients(zip(grads, tvars))
 
     def assign_lr(self, session, lr_value):
         session.run(tf.assign(self.lr, lr_value))
-
-    @property
-    def input_data(self):
-        return self._input_data
-
-    @property
-    def targets(self):
-        return self._targets
-
-    @property
-    def initial_state(self):
-        return self._initial_state
-
-    @property
-    def cost(self):
-        return self._cost
-
-    @property
-    def final_state(self):
-        return self._final_state
-
-    @property
-    def lr(self):
-        return self._lr
-
-    @property
-    def train_op(self):
-        return self._train_op
 
 
 def run_epoch(session, m, eval_op, config, verbose=False):
