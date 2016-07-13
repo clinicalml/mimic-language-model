@@ -23,97 +23,78 @@ from __future__ import print_function
 
 import collections
 import os
+import os.path
+from os.path import join as pjoin
+import re
 
 import numpy as np
 import tensorflow as tf
+import nltk
+
+from mimictools import utils as mutils
 
 
-def _read_words(filename):
-    with tf.gfile.GFile(filename, "r") as f:
-        return f.read().replace("\n", "<eos>").split()
+_fix_re = re.compile(r"[^a-z0-9/'?.,-]+")
+_num_re = re.compile(r'[0-9]+')
+_dash_re = re.compile(r'-+')
 
 
-def _build_vocab(filename):
-    data = _read_words(filename)
-
-    counter = collections.Counter(data)
-    count_pairs = sorted(counter.items(), key=lambda x: (-x[1], x[0]))
-
-    words, _ = list(zip(*count_pairs))
-    word_to_id = dict(zip(words, range(len(words))))
-
-    return word_to_id
+def _fix_word(word):
+    word = word.lower()
+    word = _fix_re.sub('-', word).strip('-')
+    word = _num_re.sub('#', word)
+    word = _dash_re.sub('-', word)
+    return word
 
 
-def _file_to_word_ids(filename, word_to_id):
-    data = _read_words(filename)
-    return [word_to_id[word] for word in data]
+def ptb_iterator(raw_data, num_steps, config):
+    with open(pjoin(config.mimicpk_path, 'vocab_fd.pk'), 'rb') as f:
+        vocab_fd = pickle.load(f)
+    vocab = vocab.keys()
+    vocab.insert(0, config.EOS) # end of sentence
+    vocab.insert(1, config.UNK) # unknown
+    vocab_lookup = {word: idx for (idx, word) in enumerate(vocab)}
 
+    epoch = 1
+    split = 0
+    while True:
+        notes_file = pjoin(config.mimicsp_path, '%02d/NOTEEVENTS_DATA_TABLE.csv' % (split,))
+        if os.path.isfile(notes_file):
+            print 'Epoch', epoch, ' File', notes_file
+            raw_data = []
+            for _, raw_text in mutils.mimic_data([notes_file], replace_anon='_'):
+                sentences = nltk.sent_tokenize(raw_text)
+                for sent in sentences:
+                    words = [_fix_word(w) for w in nltk.word_tokenize(sent)
+                                            if any(c.isalpha() or c.isdigit()
+                                                for c in w)]
+                    finalwords = []
+                    for word in words:
+                        if not word: continue
+                        if word in vocab:
+                            finalwords.append(vocab_lookup[word])
+                        else:
+                            finalwords.append(1) # vocab_lookup[config.UNK]
+                    finalwords.append(0) # vocab_lookup[config.EOS]
+                    raw_data.extend(finalwords)
 
-def ptb_raw_data(data_path=None):
-    """Load PTB raw data from data directory "data_path".
+            raw_data = np.array(raw_data, dtype=np.int32)
+            data_len = len(raw_data)
+            batch_len = data_len // config.batch_size
+            data = np.zeros([config.batch_size, batch_len], dtype=np.int32)
+            for i in range(batch_size):
+                data[i] = raw_data[batch_len * i:batch_len * (i + 1)]
 
-    Reads PTB text files, converts strings to integer ids,
-    and performs mini-batching of the inputs.
+            epoch_size = (batch_len - 1) // num_steps
+            if epoch_size == 0:
+                raise ValueError("epoch_size == 0, decrease batch_size or num_steps")
 
-    The PTB dataset comes from Tomas Mikolov's webpage:
+            for i in range(epoch_size): # XXX check about the last tokens after the data stream has ended
+                x = data[:, i*num_steps:(i+1)*num_steps]
+                y = data[:, i*num_steps+1:(i+1)*num_steps+1]
+                yield (x, y)
 
-    http://www.fit.vutbr.cz/~imikolov/rnnlm/simple-examples.tgz
-
-    Args:
-        data_path: string path to the directory where simple-examples.tgz has
-            been extracted.
-
-    Returns:
-        tuple (train_data, valid_data, test_data, vocabulary)
-        where each of the data objects can be passed to PTBIterator.
-    """
-
-    train_path = os.path.join(data_path, "ptb.train.txt")
-    valid_path = os.path.join(data_path, "ptb.valid.txt")
-    test_path = os.path.join(data_path, "ptb.test.txt")
-
-    word_to_id = _build_vocab(train_path)
-    train_data = _file_to_word_ids(train_path, word_to_id)
-    valid_data = _file_to_word_ids(valid_path, word_to_id)
-    test_data = _file_to_word_ids(test_path, word_to_id)
-    vocabulary = len(word_to_id)
-    return train_data, valid_data, test_data, vocabulary
-
-
-def ptb_iterator(raw_data, batch_size, num_steps):
-    """Iterate on the raw PTB data.
-
-    This generates batch_size pointers into the raw PTB data, and allows
-    minibatch iteration along these pointers.
-
-    Args:
-        raw_data: one of the raw data outputs from ptb_raw_data.
-        batch_size: int, the batch size.
-        num_steps: int, the number of unrolls.
-
-    Yields:
-        Pairs of the batched data, each a matrix of shape
-        [batch_size, num_steps]. The second element of the tuple is the same
-        data time-shifted to the right by one.
-
-    Raises:
-        ValueError: if batch_size or num_steps are too high.
-    """
-    raw_data = np.array(raw_data, dtype=np.int32)
-
-    data_len = len(raw_data)
-    batch_len = data_len // batch_size
-    data = np.zeros([batch_size, batch_len], dtype=np.int32)
-    for i in range(batch_size):
-        data[i] = raw_data[batch_len * i:batch_len * (i + 1)]
-
-    epoch_size = (batch_len - 1) // num_steps
-
-    if epoch_size == 0:
-        raise ValueError("epoch_size == 0, decrease batch_size or num_steps")
-
-    for i in range(epoch_size):
-        x = data[:, i*num_steps:(i+1)*num_steps]
-        y = data[:, i*num_steps+1:(i+1)*num_steps+1]
-        yield (x, y)
+        split += 1
+        if split >= 100:
+            split = 0
+            epoch += 1

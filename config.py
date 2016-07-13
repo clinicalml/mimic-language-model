@@ -1,4 +1,6 @@
 class Config(object):
+    mimicpk_path = '/home/ankit/devel/data/MIMIC3pk'
+    mimicsp_path = '/home/ankit/devel/data/MIMIC3_split'
     init_scale = 0.05
     learning_rate = 1e-3
     max_grad_norm = 5
@@ -10,3 +12,5 @@ class Config(object):
     keep_prob = 0.5
     batch_size = 20
     vocab_size = 10000
+    EOS = '+'
+    UNK = '|'
