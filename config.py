@@ -6,9 +6,10 @@ class Config(object):
     num_layers = 2
     num_steps = 35
     hidden_size = 650
+    learn_emb_size = 150
     max_epoch = 6
     max_max_epoch = 39
     keep_prob = 0.5
     batch_size = 20
     vocab_size = 25000
-    print_every = 500
+    print_every = 100

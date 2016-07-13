@@ -51,7 +51,7 @@ class LMModel(object):
         self._initial_state = cell.zero_state(batch_size, tf.float32)
 
         with tf.device("/cpu:0"):
-            embedding = tf.get_variable("embedding", [vocab_size, size])
+            embedding = tf.get_variable("embedding", [vocab_size, config.learn_emb_size])
             inputs = tf.nn.embedding_lookup(embedding, self._input_data)
 
         if is_training and config.keep_prob < 1:
