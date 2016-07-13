@@ -39,6 +39,18 @@ class Vocab(object):
         self.vocab_lookup = {word: idx for (idx, word) in enumerate(self.vocab_list)}
         self.vocab_set = set(self.vocab_list) # for faster checks
         config.vocab_size = len(self.vocab_list)
+        self.embeddings = None
+        if config.pretrained_emb:
+            print 'Loading pretrained embeddings ...'
+            with open(pjoin(config.data_path, 'vocab_embeddings'), 'r') as f:
+                for line in f:
+                    tokens = line.split()
+                    word = tokens[0]
+                    if word in self.vocab_set:
+                        emb = [float(t) for t in tokens[1:]]
+                        if self.embeddings is None:
+                            self.embeddings = np.zeros([config.vocab_size, len(emb)])
+                        self.embeddings[self.vocab_lookup[word]] = emb
         print 'Vocab loaded, size:', config.vocab_size
 
 

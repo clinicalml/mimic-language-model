@@ -13,3 +13,4 @@ class Config(object):
     batch_size = 20
     vocab_size = 25000
     print_every = 100
+    pretrained_emb = True

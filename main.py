@@ -33,7 +33,7 @@ FLAGS = flags.FLAGS
 class LMModel(object):
     """The language model."""
 
-    def __init__(self, is_training, config):
+    def __init__(self, is_training, config, vocab):
         self.batch_size = batch_size = config.batch_size
         self.num_steps = num_steps = config.num_steps
         size = config.hidden_size
@@ -52,6 +52,10 @@ class LMModel(object):
 
         with tf.device("/cpu:0"):
             embedding = tf.get_variable("embedding", [vocab_size, config.learn_emb_size])
+            if config.pretrained_emb:
+                cembedding = tf.constant(vocab.embeddings, dtype=embedding.dtype,
+                                         name="pre_embedding")
+                embedding = tf.concat(1, [embedding, cembedding])
             inputs = tf.nn.embedding_lookup(embedding, self._input_data)
 
         if is_training and config.keep_prob < 1:
@@ -161,7 +165,7 @@ def main(_):
         initializer = tf.random_uniform_initializer(-config.init_scale,
                                                     config.init_scale)
         with tf.variable_scope("model", reuse=None, initializer=initializer):
-            m = LMModel(is_training=True, config=config)
+            m = LMModel(is_training=True, config=config, vocab=vocab)
         tf.initialize_all_variables().run()
 
         for i in range(config.max_max_epoch):
