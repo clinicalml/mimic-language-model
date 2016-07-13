@@ -14,9 +14,7 @@
 #==============================================================================
 
 """Based on the TensorFlow tutorial for building a PTB LSTM model."""
-from __future__ import absolute_import
 from __future__ import division
-from __future__ import print_function
 
 import time
 
@@ -28,8 +26,6 @@ import reader
 
 flags = tf.flags
 logging = tf.logging
-
-flags.DEFINE_string("data_path", "data", "data_path")
 
 FLAGS = flags.FLAGS
 
@@ -133,15 +129,13 @@ class LMModel(object):
         return self._train_op
 
 
-def run_epoch(session, m, data, eval_op, verbose=False):
+def run_epoch(session, m, eval_op, config, verbose=False):
     """Runs the model on the given data."""
-    epoch_size = ((len(data) // m.batch_size) - 1) // m.num_steps
     start_time = time.time()
     costs = 0.0
     iters = 0
     state = m.initial_state.eval()
-    for step, (x, y) in enumerate(reader.ptb_iterator(data, m.batch_size,
-                                                      m.num_steps)):
+    for step, (x, y) in enumerate(reader.mimic_iterator(config)):
         cost, state, _ = session.run([m.cost, m.final_state, eval_op],
                                      {m.input_data: x,
                                       m.targets: y,
@@ -149,38 +143,25 @@ def run_epoch(session, m, data, eval_op, verbose=False):
         costs += cost
         iters += m.num_steps
 
-        if verbose and step % (epoch_size // 10) == 10:
-            print("%.3f perplexity: %.3f speed: %.0f wps" %
-                        (step * 1.0 / epoch_size, np.exp(costs / iters),
+        if verbose and step % config.print_every == 0:
+            print("%d  perplexity: %.3f speed: %.0f wps" %
+                        (step, np.exp(costs / iters),
                          iters * m.batch_size / (time.time() - start_time)))
 
     return np.exp(costs / iters)
 
 
 def main(_):
-    if not FLAGS.data_path:
-        raise ValueError("Must set --data_path to PTB data directory")
-
-    raw_data = reader.ptb_raw_data(FLAGS.data_path)
-    train_data, valid_data, test_data, _ = raw_data
-
     config = Config()
-    eval_config = Config()
-    eval_config.batch_size = 1
-    eval_config.num_steps = 1
+    vocab = reader.Vocab(config)
 
     config_proto = tf.ConfigProto()
     config_proto.gpu_options.allow_growth = True
-
     with tf.Graph().as_default(), tf.Session(config=config_proto) as session:
         initializer = tf.random_uniform_initializer(-config.init_scale,
                                                     config.init_scale)
         with tf.variable_scope("model", reuse=None, initializer=initializer):
             m = LMModel(is_training=True, config=config)
-        with tf.variable_scope("model", reuse=True, initializer=initializer):
-            mvalid = LMModel(is_training=False, config=config)
-            mtest = LMModel(is_training=False, config=eval_config)
-
         tf.initialize_all_variables().run()
 
         for i in range(config.max_max_epoch):
@@ -188,17 +169,10 @@ def main(_):
             m.assign_lr(session, config.learning_rate) #* lr_decay)
 
             print("Epoch: %d Learning rate: %.3f" % (i + 1, session.run(m.lr)))
-            train_perplexity = run_epoch(session, m, train_data, m.train_op,
+            train_perplexity = run_epoch(session, m, m.train_op, config,
                                          verbose=True)
             print("Epoch: %d Train Perplexity: %.3f" % (i + 1,
                                                         train_perplexity))
-            valid_perplexity = run_epoch(session, mvalid, valid_data,
-                                         tf.no_op())
-            print("Epoch: %d Valid Perplexity: %.3f" % (i + 1,
-                                                        valid_perplexity))
-
-        test_perplexity = run_epoch(session, mtest, test_data, tf.no_op())
-        print("Test Perplexity: %.3f" % test_perplexity)
 
 
 if __name__ == "__main__":
