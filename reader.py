@@ -40,9 +40,9 @@ class Vocab(object):
         self.vocab_lookup = {word: idx for (idx, word) in enumerate(self.vocab_list)}
         self.vocab_set = set(self.vocab_list) # for faster checks
         config.vocab_size = len(self.vocab_list)
-        self.embeddings = None
         if config.pretrained_emb:
             print 'Loading pretrained embeddings ...'
+            self.embeddings = None
             with open(pjoin(config.data_path, 'vocab_embeddings'), 'r') as f:
                 for line in f:
                     tokens = line.split()
@@ -53,6 +53,23 @@ class Vocab(object):
                             self.embeddings = np.zeros([config.vocab_size, len(emb)])
                         self.embeddings[self.vocab_lookup[word]] = emb
         print 'Vocab loaded, size:', config.vocab_size
+        if config.conditional:
+            print 'Loading vocab for auxiliary data ...'
+            with open(pjoin(config.data_path, 'vocab_aux.pk'), 'rb') as f:
+                data = pickle.load(f)
+            self.labs = data['labs']
+            print len(self.labs), 'labs'
+            self.labs_lookup = {val: idx for (idx, val) in enumerate(self.labs)}
+            self.diagnoses = data['diagnoses']
+            print len(self.diagnoses), 'diagnoses'
+            self.diagnoses_lookup = {val: idx for (idx, val) in enumerate(self.diagnoses)}
+            self.procedures = data['procedures']
+            print len(self.procedures), 'procedures'
+            self.procedures_lookup = {val: idx for (idx, val) in enumerate(self.procedures)}
+            self.prescriptions = data['prescriptions']
+            print len(self.prescriptions), 'prescriptions'
+            self.prescriptions_lookup = {val: idx for (idx, val) in enumerate(self.prescriptions)}
+            print 'Auxiliary vocab loaded.'
 
 
 def mimic_iterator(config):

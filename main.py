@@ -113,6 +113,10 @@ def run_epoch(session, m, eval_op, config, verbose=False):
 
 def main(_):
     config = Config()
+    if config.conditional:
+        print 'Training a conditional language model for MIMIC'
+    else:
+        print 'Training an unconditional language model for MIMIC'
     vocab = reader.Vocab(config)
 
     config_proto = tf.ConfigProto()
