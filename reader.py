@@ -23,6 +23,7 @@ import collections
 import os
 import os.path
 from os.path import join as pjoin
+import random
 import re
 import cPickle as pickle
 
@@ -55,7 +56,9 @@ class Vocab(object):
 
 
 def mimic_iterator(config):
-    for split in xrange(100):
+    splits = range(100)
+    random.shuffle(splits)
+    for split in splits:
         notes_file = pjoin(config.data_path, 'notes_%02d.pk' % (split,))
         if os.path.isfile(notes_file):
             print 'Loading data split', split
@@ -73,7 +76,7 @@ def mimic_iterator(config):
             if epoch_size == 0:
                 raise ValueError("epoch_size == 0, decrease batch_size or num_steps")
 
-            print 'Data split', split, ' ready.'
+            print 'Data split', split, 'ready.'
             for i in xrange(epoch_size):
                 x = data[:, i*config.num_steps:(i+1)*config.num_steps]
                 y = data[:, i*config.num_steps+1:(i+1)*config.num_steps+1]

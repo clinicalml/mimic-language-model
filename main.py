@@ -61,24 +61,8 @@ class LMModel(object):
         if is_training and config.keep_prob < 1:
             inputs = tf.nn.dropout(inputs, config.keep_prob)
 
-        # Simplified version of tensorflow.models.rnn.rnn.py's rnn().
-        # This builds an unrolled LSTM for tutorial purposes only.
-        # In general, use the rnn() or state_saving_rnn() from rnn.py.
-        #
-        # The alternative version of the code below is:
-        #
-        # from tensorflow.models.rnn import rnn
-        # inputs = [tf.squeeze(input_, [1])
-        #                     for input_ in tf.split(1, num_steps, inputs)]
-        # outputs, state = rnn.rnn(cell, inputs,
-        #                          initial_state=self._initial_state)
-        outputs = []
-        state = self._initial_state
-        with tf.variable_scope("RNN"):
-            for time_step in range(num_steps):
-                if time_step > 0: tf.get_variable_scope().reuse_variables()
-                (cell_output, state) = cell(inputs[:, time_step, :], state)
-                outputs.append(cell_output)
+        inputs = [tf.squeeze(input_, [1]) for input_ in tf.split(1, num_steps, inputs)]
+        outputs, state = tf.nn.rnn(cell, inputs, initial_state=self._initial_state)
 
         output = tf.reshape(tf.concat(1, outputs), [-1, size])
         softmax_w = tf.get_variable("softmax_w", [size, vocab_size])
@@ -168,7 +152,7 @@ def main(_):
             m = LMModel(is_training=True, config=config, vocab=vocab)
         tf.initialize_all_variables().run()
 
-        for i in range(config.max_max_epoch):
+        for i in range(config.max_epoch):
             #lr_decay = config.lr_decay ** max(i - config.max_epoch, 0.0)
             m.assign_lr(session, config.learning_rate) #* lr_decay)
 
