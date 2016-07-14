@@ -56,10 +56,25 @@ class LMModel(object):
                 cembedding = tf.constant(vocab.embeddings, dtype=embedding.dtype,
                                          name="pre_embedding")
                 embedding = tf.concat(1, [embedding, cembedding])
+            emb_size = embedding.get_shape()[1]
             word_embedding = tf.nn.embedding_lookup(embedding,
                                                     tf.squeeze(tf.slice(self.input_data,
                                                                         [0,0,0], [-1,-1,1]), [2]))
-            inputs = word_embedding
+            emb_list = [word_embedding]
+            for i, feat in enumerate(config.fixed_len_features[1:], 1):
+                try:
+                    vocab_aux = len(vocab.aux_list[feat])
+                except KeyError:
+                    vocab_aux = 2 # binary
+                embedding = tf.get_variable("embedding_"+feat, [vocab_aux, config.mimic_embeddings[feat]])
+                val_embedding = tf.nn.embedding_lookup(embedding,
+                                                       tf.squeeze(tf.slice(self.input_data,
+                                                                           [0,0,i], [-1,-1,1]), [2]))
+                val_embedding = tf.reshape(val_embedding, [batch_size * num_steps, -1])
+                transform_w = tf.get_variable("emb_transform_"+feat, [config.mimic_embeddings[feat], emb_size])
+                transformed = tf.matmul(val_embedding, transform_w)
+                emb_list.append(tf.reshape(transformed, [batch_size, num_steps, -1]))
+            inputs = sum(emb_list) # TODO attention
 
         if is_training and config.keep_prob < 1:
             inputs = tf.nn.dropout(inputs, config.keep_prob)

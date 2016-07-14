@@ -17,11 +17,12 @@ class Config(object):
     attention = False
     fixed_len_features = ['word', 'gender', 'has_dod', 'has_icu_stay', 'admission_type']
     var_len_features = ['diagnoses', 'procedures', 'labs', 'prescriptions']
-    mimic_embeddings = {'admission_type': 3,
-                        'diagnoses': 20,
-                        'procedures': 20,
-                        'labs': 20,
-                        'prescriptions': 20}
+    mimic_embeddings = {'gender': 1, 'has_dod': 1, 'has_icu_stay': 1,
+                        'admission_type': 3,
+                        'diagnoses': 15,
+                        'procedures': 15,
+                        'labs': 15,
+                        'prescriptions': 15}
     max_aux_values = {'diagnoses': 40,
                       'procedures': 25,
                       'labs': 200,
