@@ -56,19 +56,12 @@ class Vocab(object):
         if config.conditional:
             print 'Loading vocab for auxiliary data ...'
             with open(pjoin(config.data_path, 'vocab_aux.pk'), 'rb') as f:
-                data = pickle.load(f)
-            self.labs = data['labs']
-            print len(self.labs), 'labs'
-            self.labs_lookup = {val: idx for (idx, val) in enumerate(self.labs)}
-            self.diagnoses = data['diagnoses']
-            print len(self.diagnoses), 'diagnoses'
-            self.diagnoses_lookup = {val: idx for (idx, val) in enumerate(self.diagnoses)}
-            self.procedures = data['procedures']
-            print len(self.procedures), 'procedures'
-            self.procedures_lookup = {val: idx for (idx, val) in enumerate(self.procedures)}
-            self.prescriptions = data['prescriptions']
-            print len(self.prescriptions), 'prescriptions'
-            self.prescriptions_lookup = {val: idx for (idx, val) in enumerate(self.prescriptions)}
+                # loads labs, diagnoses, procedures, prescriptions
+                self.aux_list = pickle.load(f)
+            self.aux_list['admission_type'] = ['ELECTIVE', 'URGENT', 'NEWBORN', 'EMERGENCY']
+            self.aux_set = {feat: set(vals) for (feat, vals) in self.aux_list.items()}
+            self.aux_lookup = {feat: {val: idx for (idx, val) in enumerate(vals)}
+                                     for (feat, vals) in self.aux_list.items()}
             print 'Auxiliary vocab loaded.'
 
 
@@ -80,7 +73,8 @@ def mimic_iterator(config):
         if os.path.isfile(notes_file):
             print 'Loading data split', split
             with open(notes_file, 'rb') as f:
-                raw_data = pickle.load(f)
+                data = pickle.load(f)
+            # TODO process data to take out the conditional stuff
             print 'Loaded data split', split, ', processing.'
             data_len = len(raw_data)
             raw_data = np.array(raw_data, dtype=np.int32)
