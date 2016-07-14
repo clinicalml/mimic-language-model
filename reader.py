@@ -62,6 +62,8 @@ class Vocab(object):
             self.aux_set = {feat: set(vals) for (feat, vals) in self.aux_list.items()}
             self.aux_lookup = {feat: {val: idx for (idx, val) in enumerate(vals)}
                                      for (feat, vals) in self.aux_list.items()}
+            for (k,v) in self.aux_list.items():
+                print k, len(v)
             print 'Auxiliary vocab loaded.'
 
 
@@ -74,12 +76,22 @@ def mimic_iterator(config):
             print 'Loading data split', split
             with open(notes_file, 'rb') as f:
                 data = pickle.load(f)
-            # TODO process data to take out the conditional stuff
+            raw_data = []
+            for note in data:
+                values = {}
+                (text, values['gender'], values['has_dod'], values['has_icu_stay'], \
+                 values['admission_type'], values['diagnoses'], values['procedures'], \
+                 values['labs'], values['prescriptions']) = note
+                if config.conditional:
+                    raw_data.extend([[w] + [values[feat] for feat in config.fixed_len_features[1:]] for w in text])
+                else:
+                    raw_data.extend([[w] for w in text])
+            # TODO the variable length stuff
             print 'Loaded data split', split, ', processing.'
             data_len = len(raw_data)
             raw_data = np.array(raw_data, dtype=np.int32)
             batch_len = data_len // config.batch_size
-            data = np.zeros([config.batch_size, batch_len], dtype=np.int32)
+            data = np.zeros([config.batch_size, batch_len, config.data_size], dtype=np.int32)
             for i in xrange(config.batch_size):
                 data[i] = raw_data[batch_len * i:batch_len * (i + 1)]
 
@@ -90,5 +102,5 @@ def mimic_iterator(config):
             print 'Data split', split, 'ready.'
             for i in xrange(epoch_size):
                 x = data[:, i*config.num_steps:(i+1)*config.num_steps]
-                y = data[:, i*config.num_steps+1:(i+1)*config.num_steps+1]
+                y = data[:, i*config.num_steps+1:(i+1)*config.num_steps+1, 0]
                 yield (x, y)

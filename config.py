@@ -11,5 +11,24 @@ class Config(object):
     keep_prob = 0.5
     batch_size = 10
     print_every = 100
+    bidirectional = False # TODO
     pretrained_emb = True
     conditional = True
+    attention = False
+    fixed_len_features = ['word', 'gender', 'has_dod', 'has_icu_stay', 'admission_type']
+    var_len_features = ['diagnoses', 'procedures', 'labs', 'prescriptions']
+    mimic_embeddings = {'admission_type': 3,
+                        'diagnoses': 20,
+                        'procedures': 20,
+                        'labs': 20,
+                        'prescriptions': 20}
+    max_aux_values = {'diagnoses': 40,
+                      'procedures': 25,
+                      'labs': 200,
+                      'prescriptions': 150} # XXX remove if not needed
+
+    def __init__(self):
+        if self.conditional:
+            self.data_size = len(self.fixed_len_features)
+        else:
+            self.data_size = 1

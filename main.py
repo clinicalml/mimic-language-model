@@ -39,7 +39,7 @@ class LMModel(object):
         size = config.hidden_size
         vocab_size = config.vocab_size
 
-        self.input_data = tf.placeholder(tf.int32, [batch_size, num_steps])
+        self.input_data = tf.placeholder(tf.int32, [batch_size, num_steps, config.data_size])
         self.targets = tf.placeholder(tf.int32, [batch_size, num_steps])
 
         lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(size)
@@ -56,7 +56,10 @@ class LMModel(object):
                 cembedding = tf.constant(vocab.embeddings, dtype=embedding.dtype,
                                          name="pre_embedding")
                 embedding = tf.concat(1, [embedding, cembedding])
-            inputs = tf.nn.embedding_lookup(embedding, self.input_data)
+            word_embedding = tf.nn.embedding_lookup(embedding,
+                                                    tf.squeeze(tf.slice(self.input_data,
+                                                                        [0,0,0], [-1,-1,1]), [2]))
+            inputs = word_embedding
 
         if is_training and config.keep_prob < 1:
             inputs = tf.nn.dropout(inputs, config.keep_prob)
