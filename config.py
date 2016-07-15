@@ -11,8 +11,6 @@ class Config(object):
     keep_prob = 0.5
     batch_size = 10
     print_every = 100
-    bidirectional = False # TODO
-    hierarchical_softmax = False # TODO
     pretrained_emb = True
     conditional = True
     attention = False # TODO

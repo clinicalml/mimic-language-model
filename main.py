@@ -61,12 +61,12 @@ class LMModel(object):
                                          name="pre_embedding")
                 embedding = tf.concat(1, [embedding, cembedding])
             emb_size = embedding.get_shape()[1]
-            word_embedding = tf.nn.embedding_lookup(embedding,
-                                                    tf.squeeze(tf.slice(self.input_data,
-                                                                        [0,0,0], [-1,-1,1]), [2]))
-        emb_list = [word_embedding]
+            inputs = tf.nn.embedding_lookup(embedding,
+                                            tf.squeeze(tf.slice(self.input_data,
+                                                                [0,0,0], [-1,-1,1]), [2]))
 
         if config.conditional:
+            emb_list = []
             for i, feat in enumerate(config.fixed_len_features[1:], 1):
                 try:
                     vocab_aux = len(vocab.aux_list[feat])
@@ -94,9 +94,10 @@ class LMModel(object):
                 transform_w = tf.get_variable("emb_transform_"+feat, [config.mimic_embeddings[feat], emb_size])
                 transformed = tf.matmul(val_embedding, transform_w)
                 reshaped = tf.reshape(transformed, tf.pack([batch_size, num_steps, -1, emb_size]))
-                emb_list.append(tf.reduce_sum(reshaped, 2)) # TODO no
+                emb_list.append(tf.reduce_sum(reshaped, 2))
 
-            inputs = sum(emb_list) # TODO attention
+            structured_inputs = sum(emb_list)
+            inputs += structured_inputs # TODO remove this, and decouple structured dims
 
         if is_training and config.keep_prob < 1:
             inputs = tf.nn.dropout(inputs, config.keep_prob)
