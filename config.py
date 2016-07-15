@@ -14,7 +14,7 @@ class Config(object):
     bidirectional = False # TODO
     pretrained_emb = True
     conditional = True
-    attention = False
+    attention = False # TODO
     fixed_len_features = ['word', 'gender', 'has_dod', 'has_icu_stay', 'admission_type']
     var_len_features = ['diagnoses', 'procedures', 'labs', 'prescriptions']
     mimic_embeddings = {'gender': 1, 'has_dod': 1, 'has_icu_stay': 1,
@@ -23,10 +23,6 @@ class Config(object):
                         'procedures': 15,
                         'labs': 15,
                         'prescriptions': 15}
-    max_aux_values = {'diagnoses': 40,
-                      'procedures': 25,
-                      'labs': 200,
-                      'prescriptions': 150} # XXX remove if not needed
 
     def __init__(self):
         if self.conditional:

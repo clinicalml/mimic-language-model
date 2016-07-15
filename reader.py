@@ -59,6 +59,8 @@ class Vocab(object):
                 # loads labs, diagnoses, procedures, prescriptions
                 self.aux_list = pickle.load(f)
             self.aux_list['admission_type'] = ['ELECTIVE', 'URGENT', 'NEWBORN', 'EMERGENCY']
+            for feat in config.var_len_features:
+                self.aux_list[feat].insert(0, None) # padding value
             self.aux_set = {feat: set(vals) for (feat, vals) in self.aux_list.items()}
             self.aux_lookup = {feat: {val: idx for (idx, val) in enumerate(vals)}
                                      for (feat, vals) in self.aux_list.items()}
@@ -77,23 +79,36 @@ def mimic_iterator(config):
             with open(notes_file, 'rb') as f:
                 data = pickle.load(f)
             raw_data = []
+            if config.conditional:
+                aux_raw_data = collections.defaultdict(list)
             for note in data:
                 values = {}
                 (text, values['gender'], values['has_dod'], values['has_icu_stay'], \
                  values['admission_type'], values['diagnoses'], values['procedures'], \
                  values['labs'], values['prescriptions']) = note
                 if config.conditional:
-                    raw_data.extend([[w] + [values[feat] for feat in config.fixed_len_features[1:]] for w in text])
+                    fixed_len_values = [[w] + [values[feat] for feat in config.fixed_len_features[1:]] for w in text]
+                    for feat in config.var_len_features:
+                        aux_raw_data[feat].extend([values[feat]] * len(fixed_len_values))
                 else:
-                    raw_data.extend([[w] for w in text])
-            # TODO the variable length stuff
+                    fixed_len_values = [[w] for w in text]
+                raw_data.extend(fixed_len_values)
             print 'Loaded data split', split, ', processing.'
+
             data_len = len(raw_data)
             raw_data = np.array(raw_data, dtype=np.int32)
             batch_len = data_len // config.batch_size
+            if config.conditional:
+                aux_data = {}
+                for feat in config.var_len_features:
+                    aux_raw_data[feat] = np.array(aux_raw_data[feat], dtype=np.object)
+                    aux_data[feat] = np.zeros([config.batch_size, batch_len], dtype=np.object)
             data = np.zeros([config.batch_size, batch_len, config.data_size], dtype=np.int32)
             for i in xrange(config.batch_size):
                 data[i] = raw_data[batch_len * i:batch_len * (i + 1)]
+                if config.conditional:
+                    for feat in config.var_len_features:
+                        aux_data[feat][i] = aux_raw_data[feat][batch_len * i:batch_len * (i + 1)]
 
             epoch_size = (batch_len - 1) // config.num_steps
             if epoch_size == 0:
@@ -103,4 +118,17 @@ def mimic_iterator(config):
             for i in xrange(epoch_size):
                 x = data[:, i*config.num_steps:(i+1)*config.num_steps]
                 y = data[:, i*config.num_steps+1:(i+1)*config.num_steps+1, 0]
-                yield (x, y)
+                if config.conditional:
+                    aux = {}
+                    for feat in config.var_len_features:
+                        adata = aux_data[feat][:, i*config.num_steps:(i+1)*config.num_steps]
+                        var_len = max(len(e) for d in adata for e in d)
+                        tensor = np.zeros([config.batch_size, config.num_steps, var_len], dtype=np.int32)
+                        for bs in xrange(config.batch_size):
+                            for ns in xrange(config.num_steps):
+                                for i, elem in enumerate(adata[bs,ns]):
+                                    tensor[bs,ns,i] = elem
+                        aux[feat] = tensor
+                    yield (x, y, aux)
+                else:
+                    yield (x, y, None)

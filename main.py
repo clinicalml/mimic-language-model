@@ -40,6 +40,10 @@ class LMModel(object):
         vocab_size = config.vocab_size
 
         self.input_data = tf.placeholder(tf.int32, [batch_size, num_steps, config.data_size])
+        if config.conditional:
+            self.aux_data = {}
+            for feat in config.var_len_features:
+                self.aux_data[feat] = tf.placeholder(tf.int32, [batch_size, num_steps, None])
         self.targets = tf.placeholder(tf.int32, [batch_size, num_steps])
 
         lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(size)
@@ -61,19 +65,35 @@ class LMModel(object):
                                                     tf.squeeze(tf.slice(self.input_data,
                                                                         [0,0,0], [-1,-1,1]), [2]))
             emb_list = [word_embedding]
-            for i, feat in enumerate(config.fixed_len_features[1:], 1):
-                try:
-                    vocab_aux = len(vocab.aux_list[feat])
-                except KeyError:
-                    vocab_aux = 2 # binary
-                embedding = tf.get_variable("embedding_"+feat, [vocab_aux, config.mimic_embeddings[feat]])
-                val_embedding = tf.nn.embedding_lookup(embedding,
-                                                       tf.squeeze(tf.slice(self.input_data,
-                                                                           [0,0,i], [-1,-1,1]), [2]))
-                val_embedding = tf.reshape(val_embedding, [batch_size * num_steps, -1])
-                transform_w = tf.get_variable("emb_transform_"+feat, [config.mimic_embeddings[feat], emb_size])
-                transformed = tf.matmul(val_embedding, transform_w)
-                emb_list.append(tf.reshape(transformed, [batch_size, num_steps, -1]))
+
+            if config.conditional:
+                for i, feat in enumerate(config.fixed_len_features[1:], 1):
+                    try:
+                        vocab_aux = len(vocab.aux_list[feat])
+                    except KeyError:
+                        vocab_aux = 2 # binary
+                    embedding = tf.get_variable("embedding_"+feat, [vocab_aux, config.mimic_embeddings[feat]])
+                    val_embedding = tf.nn.embedding_lookup(embedding,
+                                                           tf.squeeze(tf.slice(self.input_data,
+                                                                               [0,0,i], [-1,-1,1]), [2]))
+                    val_embedding = tf.reshape(val_embedding, [batch_size * num_steps, -1])
+                    transform_w = tf.get_variable("emb_transform_"+feat, [config.mimic_embeddings[feat], emb_size])
+                    transformed = tf.matmul(val_embedding, transform_w)
+                    emb_list.append(tf.reshape(transformed, [batch_size, num_steps, -1]))
+
+                for feat in config.var_len_features:
+                    try:
+                        vocab_aux = len(vocab.aux_list[feat])
+                    except KeyError:
+                        vocab_aux = 2 # binary
+                    embedding = tf.get_variable("embedding_"+feat, [vocab_aux, config.mimic_embeddings[feat]])
+                    val_embedding = tf.nn.embedding_lookup(embedding, self.aux_data[feat])
+                    val_embedding = tf.reshape(val_embedding, [-1, config.mimic_embeddings[feat]])
+                    transform_w = tf.get_variable("emb_transform_"+feat, [config.mimic_embeddings[feat], emb_size])
+                    transformed = tf.matmul(val_embedding, transform_w)
+                    reshaped = tf.reshape(transformed, tf.pack([batch_size, num_steps, -1, emb_size]))
+                    emb_list.append(tf.reduce_sum(reshaped, 2)) # TODO no
+
             inputs = sum(emb_list) # TODO attention
 
         if is_training and config.keep_prob < 1:
@@ -113,11 +133,14 @@ def run_epoch(session, m, eval_op, config, verbose=False):
     costs = 0.0
     iters = 0
     state = m.initial_state.eval()
-    for step, (x, y) in enumerate(reader.mimic_iterator(config)):
-        cost, state, _ = session.run([m.cost, m.final_state, eval_op],
-                                     {m.input_data: x,
-                                      m.targets: y,
-                                      m.initial_state: state})
+    for step, (x, y, aux) in enumerate(reader.mimic_iterator(config)):
+        f_dict = {m.input_data: x,
+                  m.targets: y,
+                  m.initial_state: state}
+        if config.conditional:
+            for feat in config.var_len_features:
+                f_dict[m.aux_data[feat]] = aux[feat]
+        cost, state, _ = session.run([m.cost, m.final_state, eval_op], f_dict)
         costs += cost
         iters += m.num_steps
 
