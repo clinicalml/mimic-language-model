@@ -64,35 +64,37 @@ class LMModel(object):
             word_embedding = tf.nn.embedding_lookup(embedding,
                                                     tf.squeeze(tf.slice(self.input_data,
                                                                         [0,0,0], [-1,-1,1]), [2]))
-            emb_list = [word_embedding]
+        emb_list = [word_embedding]
 
-            if config.conditional:
-                for i, feat in enumerate(config.fixed_len_features[1:], 1):
-                    try:
-                        vocab_aux = len(vocab.aux_list[feat])
-                    except KeyError:
-                        vocab_aux = 2 # binary
+        if config.conditional:
+            for i, feat in enumerate(config.fixed_len_features[1:], 1):
+                try:
+                    vocab_aux = len(vocab.aux_list[feat])
+                except KeyError:
+                    vocab_aux = 2 # binary
+                with tf.device("/cpu:0"):
                     embedding = tf.get_variable("embedding_"+feat, [vocab_aux, config.mimic_embeddings[feat]])
                     val_embedding = tf.nn.embedding_lookup(embedding,
                                                            tf.squeeze(tf.slice(self.input_data,
                                                                                [0,0,i], [-1,-1,1]), [2]))
                     val_embedding = tf.reshape(val_embedding, [batch_size * num_steps, -1])
-                    transform_w = tf.get_variable("emb_transform_"+feat, [config.mimic_embeddings[feat], emb_size])
-                    transformed = tf.matmul(val_embedding, transform_w)
-                    emb_list.append(tf.reshape(transformed, [batch_size, num_steps, -1]))
+                transform_w = tf.get_variable("emb_transform_"+feat, [config.mimic_embeddings[feat], emb_size])
+                transformed = tf.matmul(val_embedding, transform_w)
+                emb_list.append(tf.reshape(transformed, [batch_size, num_steps, -1]))
 
-                for feat in config.var_len_features:
-                    try:
-                        vocab_aux = len(vocab.aux_list[feat])
-                    except KeyError:
-                        vocab_aux = 2 # binary
+            for feat in config.var_len_features:
+                try:
+                    vocab_aux = len(vocab.aux_list[feat])
+                except KeyError:
+                    vocab_aux = 2 # binary
+                with tf.device("/cpu:0"):
                     embedding = tf.get_variable("embedding_"+feat, [vocab_aux, config.mimic_embeddings[feat]])
                     val_embedding = tf.nn.embedding_lookup(embedding, self.aux_data[feat])
                     val_embedding = tf.reshape(val_embedding, [-1, config.mimic_embeddings[feat]])
-                    transform_w = tf.get_variable("emb_transform_"+feat, [config.mimic_embeddings[feat], emb_size])
-                    transformed = tf.matmul(val_embedding, transform_w)
-                    reshaped = tf.reshape(transformed, tf.pack([batch_size, num_steps, -1, emb_size]))
-                    emb_list.append(tf.reduce_sum(reshaped, 2)) # TODO no
+                transform_w = tf.get_variable("emb_transform_"+feat, [config.mimic_embeddings[feat], emb_size])
+                transformed = tf.matmul(val_embedding, transform_w)
+                reshaped = tf.reshape(transformed, tf.pack([batch_size, num_steps, -1, emb_size]))
+                emb_list.append(tf.reduce_sum(reshaped, 2)) # TODO no
 
             inputs = sum(emb_list) # TODO attention
 

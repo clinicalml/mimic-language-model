@@ -4,7 +4,7 @@ class Config(object):
     learning_rate = 1e-3
     max_grad_norm = 5
     num_layers = 2
-    num_steps = 15
+    num_steps = 10
     hidden_size = 650
     learn_emb_size = 150
     max_epoch = 6
