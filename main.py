@@ -87,8 +87,13 @@ class LMModel(object):
         if is_training and config.keep_prob < 1:
             inputs = tf.nn.dropout(inputs, config.keep_prob)
 
-        inputs = [tf.squeeze(input_, [1]) for input_ in tf.split(1, num_steps, inputs)]
-        outputs, state = tf.nn.rnn(cell, inputs, initial_state=self.initial_state)
+        outputs = []
+        state = self.initial_state
+        with tf.variable_scope("RNN"):
+            for time_step in range(num_steps):
+                if time_step > 0: tf.get_variable_scope().reuse_variables()
+                (cell_output, state) = cell(inputs[:, time_step, :], state)
+                outputs.append(cell_output)
 
         output = tf.reshape(tf.concat(1, outputs), [-1, size])
         softmax_w = tf.get_variable("softmax_w", [size, vocab_size])
@@ -110,6 +115,7 @@ class LMModel(object):
                                           config.max_grad_norm)
         optimizer = tf.train.AdamOptimizer(self.lr)
         self.train_op = optimizer.apply_gradients(zip(grads, tvars))
+
 
     def assign_lr(self, session, lr_value):
         session.run(tf.assign(self.lr, lr_value))
