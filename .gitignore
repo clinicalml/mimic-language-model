@@ -1,3 +1,8 @@
+# Tensorflow
+checkpoint
+*.dat
+*.meta
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
