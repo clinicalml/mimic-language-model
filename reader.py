@@ -50,7 +50,7 @@ class Vocab(object):
             print 'Auxiliary vocab loaded.'
 
 
-def mimic_iterator(config):
+def mimic_iterator(config, vocab):
     splits = range(100)
     random.shuffle(splits)
     for split in splits:
@@ -67,11 +67,12 @@ def mimic_iterator(config):
                 (text, values['gender'], values['has_dod'], values['has_icu_stay'], \
                  values['admission_type'], values['diagnoses'], values['procedures'], \
                  values['labs'], values['prescriptions']) = note
-                raw_data.append(text)
-                if config.conditional:
-                    for (feat, dims) in config.mimic_embeddings.items():
-                        if dims > 0:
-                            raw_aux_data[feat].append(values[feat])
+                if len(text) > 1:
+                    raw_data.append(text)
+                    if config.conditional:
+                        for (feat, dims) in config.mimic_embeddings.items():
+                            if dims > 0:
+                                raw_aux_data[feat].append(values[feat])
             print 'Loaded data split', split
 
             notes_count = len(raw_data)
@@ -83,7 +84,7 @@ def mimic_iterator(config):
                     for (feat, vals) in raw_aux_data.items():
                         batch_aux_data[feat] = vals[config.batch_size * batch : config.batch_size * (batch + 1)]
                 max_note_len = max(len(note) for note in batch_data)
-                epoch_size = ((max_note_len - 1) // config.num_steps) + 1
+                epoch_size = ((max_note_len - 2) // config.num_steps) + 1
                 data = np.zeros([config.batch_size, epoch_size * config.num_steps + 1], dtype=np.int32)
                 mask = np.zeros([config.batch_size, epoch_size * config.num_steps + 1], dtype=np.float32)
                 for i, iter_data in enumerate(batch_data):

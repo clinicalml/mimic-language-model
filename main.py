@@ -115,13 +115,13 @@ class LMModel(object):
         session.run(tf.assign(self.lr, lr_value))
 
 
-def run_epoch(session, m, eval_op, config, verbose=False):
+def run_epoch(session, m, eval_op, config, vocab, verbose=False):
     """Runs the model on the given data."""
     start_time = time.time()
     costs = 0.0
     iters = 0
     zero_state = m.initial_state.eval()
-    for step, (x, y, mask, aux, new_batch) in enumerate(reader.mimic_iterator(config)):
+    for step, (x, y, mask, aux, new_batch) in enumerate(reader.mimic_iterator(config, vocab)):
         f_dict = {m.input_data: x,
                   m.targets: y,
                   m.mask: mask}
@@ -166,7 +166,7 @@ def main(_):
             m.assign_lr(session, config.learning_rate) #* lr_decay)
 
             print("Epoch: %d Learning rate: %.3f" % (i + 1, session.run(m.lr)))
-            train_perplexity = run_epoch(session, m, m.train_op, config,
+            train_perplexity = run_epoch(session, m, m.train_op, config, vocab,
                                          verbose=True)
             print("Epoch: %d Train Perplexity: %.3f" % (i + 1,
                                                         train_perplexity))
