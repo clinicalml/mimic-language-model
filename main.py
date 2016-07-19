@@ -39,50 +39,34 @@ class LMModel(object):
         size = config.hidden_size
         vocab_size = config.vocab_size
 
-        self.input_data = tf.placeholder(tf.int32, [batch_size, num_steps, config.data_size])
+        self.input_data = tf.placeholder(tf.int32, [batch_size, num_steps])
+        self.targets = tf.placeholder(tf.int32, [batch_size, num_steps])
+        self.mask = tf.placeholder(tf.float32, [batch_size, num_steps])
         if config.conditional:
             self.aux_data = {}
-            for feat in config.var_len_features:
-                self.aux_data[feat] = tf.placeholder(tf.int32, [batch_size, num_steps, None])
-        self.targets = tf.placeholder(tf.int32, [batch_size, num_steps])
+            for feat, dims in config.mimic_embeddings.items():
+                if dims > 0:
+                    self.aux_data[feat] = tf.placeholder(tf.int32, [batch_size, None])
 
         lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(size)
         if is_training and config.keep_prob < 1:
-            lstm_cell = tf.nn.rnn_cell.DropoutWrapper(
-                    lstm_cell, output_keep_prob=config.keep_prob)
+            lstm_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, output_keep_prob=config.keep_prob)
         cell = tf.nn.rnn_cell.MultiRNNCell([lstm_cell] * config.num_layers)
 
         self.initial_state = cell.zero_state(batch_size, tf.float32)
 
         with tf.device("/cpu:0"):
-            embedding = tf.get_variable("embedding", [vocab_size, config.learn_emb_size])
+            embedding = tf.get_variable("embedding", [vocab_size, config.learn_wordemb_size])
             if config.pretrained_emb:
                 cembedding = tf.constant(vocab.embeddings, dtype=embedding.dtype,
                                          name="pre_embedding")
                 embedding = tf.concat(1, [embedding, cembedding])
-            emb_size = embedding.get_shape()[1]
-            inputs = tf.nn.embedding_lookup(embedding,
-                                            tf.squeeze(tf.slice(self.input_data,
-                                                                [0,0,0], [-1,-1,1]), [2]))
+            inputs = tf.nn.embedding_lookup(embedding, self.input_data)
 
         if config.conditional:
+            emb_size = max(config.mimic_embeddings.values())
             emb_list = []
-            for i, feat in enumerate(config.fixed_len_features[1:], 1):
-                try:
-                    vocab_aux = len(vocab.aux_list[feat])
-                except KeyError:
-                    vocab_aux = 2 # binary
-                with tf.device("/cpu:0"):
-                    embedding = tf.get_variable("embedding_"+feat, [vocab_aux, config.mimic_embeddings[feat]])
-                    val_embedding = tf.nn.embedding_lookup(embedding,
-                                                           tf.squeeze(tf.slice(self.input_data,
-                                                                               [0,0,i], [-1,-1,1]), [2]))
-                    val_embedding = tf.reshape(val_embedding, [batch_size * num_steps, -1])
-                transform_w = tf.get_variable("emb_transform_"+feat, [config.mimic_embeddings[feat], emb_size])
-                transformed = tf.matmul(val_embedding, transform_w)
-                emb_list.append(tf.reshape(transformed, [batch_size, num_steps, -1]))
-
-            for feat in config.var_len_features:
+            for i, (feat, dims) in enumerate(config.mimic_embeddings.items()):
                 try:
                     vocab_aux = len(vocab.aux_list[feat])
                 except KeyError:
@@ -93,11 +77,12 @@ class LMModel(object):
                     val_embedding = tf.reshape(val_embedding, [-1, config.mimic_embeddings[feat]])
                 transform_w = tf.get_variable("emb_transform_"+feat, [config.mimic_embeddings[feat], emb_size])
                 transformed = tf.matmul(val_embedding, transform_w)
-                reshaped = tf.reshape(transformed, tf.pack([batch_size, num_steps, -1, emb_size]))
-                emb_list.append(tf.reduce_sum(reshaped, 2))
+                reshaped = tf.reshape(transformed, tf.pack([batch_size, -1, emb_size]))
+                reduced = tf.reduce_sum(reshaped, 1)
+                emb_list.append(reduced)
 
             structured_inputs = sum(emb_list)
-            inputs += structured_inputs # TODO remove this, and decouple structured dims
+            inputs += tf.reduce_sum(structured_inputs) # TODO remove this, and decouple structured dims
 
         if is_training and config.keep_prob < 1:
             inputs = tf.nn.dropout(inputs, config.keep_prob)
@@ -112,7 +97,7 @@ class LMModel(object):
         loss = tf.nn.seq2seq.sequence_loss_by_example(
                 [logits],
                 [tf.reshape(self.targets, [-1])],
-                [tf.ones([batch_size * num_steps])])
+                [tf.reshape(self.mask, [-1])])
         self.cost = cost = tf.reduce_sum(loss) / batch_size
         self.final_state = state
 
@@ -135,14 +120,18 @@ def run_epoch(session, m, eval_op, config, verbose=False):
     start_time = time.time()
     costs = 0.0
     iters = 0
-    state = m.initial_state.eval()
-    for step, (x, y, aux) in enumerate(reader.mimic_iterator(config)):
+    zero_state = m.initial_state.eval()
+    for step, (x, y, mask, aux, new_batch) in enumerate(reader.mimic_iterator(config)):
         f_dict = {m.input_data: x,
                   m.targets: y,
-                  m.initial_state: state}
+                  m.mask: mask}
+        if new_batch:
+            f_dict[m.initial_state] = zero_state
+        else:
+            f_dict[m.initial_state] = state
         if config.conditional:
-            for feat in config.var_len_features:
-                f_dict[m.aux_data[feat]] = aux[feat]
+            for feat, vals in aux.items():
+                f_dict[m.aux_data[feat]] = vals
         cost, state, _ = session.run([m.cost, m.final_state, eval_op], f_dict)
         costs += cost
         iters += m.num_steps

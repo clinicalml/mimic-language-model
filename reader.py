@@ -1,22 +1,3 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#         http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#==============================================================================
-
-
-"""Utilities for parsing MIMIC data.
-Based on the TensorFlow tutorial for building a PTB LSTM model.
-"""
 from __future__ import division
 
 import collections
@@ -80,55 +61,52 @@ def mimic_iterator(config):
                 data = pickle.load(f)
             raw_data = []
             if config.conditional:
-                aux_raw_data = collections.defaultdict(list)
+                raw_aux_data = collections.defaultdict(list)
             for note in data:
                 values = {}
                 (text, values['gender'], values['has_dod'], values['has_icu_stay'], \
                  values['admission_type'], values['diagnoses'], values['procedures'], \
                  values['labs'], values['prescriptions']) = note
+                raw_data.append(text)
                 if config.conditional:
-                    fixed_len_values = [[w] + [values[feat] for feat in config.fixed_len_features[1:]] for w in text]
-                    for feat in config.var_len_features:
-                        aux_raw_data[feat].extend([values[feat]] * len(fixed_len_values))
-                else:
-                    fixed_len_values = [[w] for w in text]
-                raw_data.extend(fixed_len_values)
-            print 'Loaded data split', split, ', processing.'
+                    for (feat, dims) in config.mimic_embeddings.items():
+                        if dims > 0:
+                            raw_aux_data[feat].append(values[feat])
+            print 'Loaded data split', split
 
-            data_len = len(raw_data)
-            raw_data = np.array(raw_data, dtype=np.int32)
-            batch_len = data_len // config.batch_size
-            if config.conditional:
+            notes_count = len(raw_data)
+            batch_len = ((notes_count - 1) // config.batch_size) + 1
+            for batch in xrange(batch_len):
+                batch_data = raw_data[config.batch_size * batch : config.batch_size * (batch + 1)]
+                if config.conditional:
+                    batch_aux_data = {}
+                    for (feat, vals) in raw_aux_data.items():
+                        batch_aux_data[feat] = vals[config.batch_size * batch : config.batch_size * (batch + 1)]
+                max_note_len = max(len(note) for note in batch_data)
+                epoch_size = ((max_note_len - 1) // config.num_steps) + 1
+                data = np.zeros([config.batch_size, epoch_size * config.num_steps + 1], dtype=np.int32)
+                mask = np.zeros([config.batch_size, epoch_size * config.num_steps + 1], dtype=np.float32)
+                for i, iter_data in enumerate(batch_data):
+                    data[i, 0:len(iter_data)] = iter_data
+                    mask[i, 0:len(iter_data)] = 1.0
                 aux_data = {}
-                for feat in config.var_len_features:
-                    aux_raw_data[feat] = np.array(aux_raw_data[feat], dtype=np.object)
-                    aux_data[feat] = np.zeros([config.batch_size, batch_len], dtype=np.object)
-            data = np.zeros([config.batch_size, batch_len, config.data_size], dtype=np.int32)
-            for i in xrange(config.batch_size):
-                data[i] = raw_data[batch_len * i:batch_len * (i + 1)]
                 if config.conditional:
-                    for feat in config.var_len_features:
-                        aux_data[feat][i] = aux_raw_data[feat][batch_len * i:batch_len * (i + 1)]
+                    for feat, vals in batch_aux_data.items():
+                        if feat in config.fixed_len_features:
+                            max_struct_len = 1
+                        else:
+                            max_struct_len = max(len(v) for v in vals)
+                        aux_data[feat] = np.zeros([config.batch_size, max_struct_len], dtype=np.int32)
+                        for i, iter_data in enumerate(vals):
+                            if feat in config.fixed_len_features:
+                                aux_data[feat][i, 0] = iter_data
+                            else:
+                                aux_data[feat][i, 0:len(iter_data)] = iter_data
 
-            epoch_size = (batch_len - 1) // config.num_steps
-            if epoch_size == 0:
-                raise ValueError("epoch_size == 0, decrease batch_size or num_steps")
-
-            print 'Data split', split, 'ready.'
-            for i in xrange(epoch_size):
-                x = data[:, i*config.num_steps:(i+1)*config.num_steps]
-                y = data[:, i*config.num_steps+1:(i+1)*config.num_steps+1, 0]
-                if config.conditional:
-                    aux = {}
-                    for feat in config.var_len_features:
-                        adata = aux_data[feat][:, i*config.num_steps:(i+1)*config.num_steps]
-                        var_len = max(len(e) for d in adata for e in d)
-                        tensor = np.zeros([config.batch_size, config.num_steps, var_len], dtype=np.int32)
-                        for bs in xrange(config.batch_size):
-                            for ns in xrange(config.num_steps):
-                                for i, elem in enumerate(adata[bs,ns]):
-                                    tensor[bs,ns,i] = elem
-                        aux[feat] = tensor
-                    yield (x, y, aux)
-                else:
-                    yield (x, y, None)
+                new_batch = True
+                for i in xrange(epoch_size):
+                    x = data[:, i*config.num_steps:(i+1)*config.num_steps]
+                    y = data[:, i*config.num_steps+1:(i+1)*config.num_steps+1]
+                    m = mask[:, i*config.num_steps+1:(i+1)*config.num_steps+1]
+                    yield (x, y, m, aux_data, new_batch)
+                    new_batch = False
