@@ -24,11 +24,6 @@ import tensorflow as tf
 from config import Config
 import reader
 
-flags = tf.flags
-logging = tf.logging
-
-FLAGS = flags.FLAGS
-
 
 class LMModel(object):
     """The language model."""
@@ -126,7 +121,7 @@ class LMModel(object):
         session.run(tf.assign(self.lr, lr_value))
 
 
-def run_epoch(session, m, eval_op, config, vocab, verbose=False):
+def run_epoch(session, m, eval_op, config, vocab, saver, verbose=False):
     """Runs the model on the given data."""
     start_time = time.time()
     costs = 0.0
@@ -151,6 +146,10 @@ def run_epoch(session, m, eval_op, config, vocab, verbose=False):
             print("%d  perplexity: %.3f speed: %.0f wps" %
                         (step, np.exp(costs / iters),
                          iters * m.batch_size / (time.time() - start_time)))
+        if step and step % config.save_every == 0:
+            if verbose: print "Saving model ..."
+            save_file = saver.save(session, config.save_file)
+            if verbose: print "Saved to", save_file
 
     return np.exp(costs / iters)
 
@@ -170,17 +169,23 @@ def main(_):
                                                     config.init_scale)
         with tf.variable_scope("model", reuse=None, initializer=initializer):
             m = LMModel(is_training=True, config=config, vocab=vocab)
-        tf.initialize_all_variables().run()
+        saver = tf.train.Saver()
+        try:
+            saver.restore(session, config.load_file)
+            print "Model restored from", config.load_file
+        except ValueError:
+            tf.initialize_all_variables().run()
+            print "No loadable model file, new model initialized."
 
         for i in range(config.max_epoch):
             #lr_decay = config.lr_decay ** max(i - config.max_epoch, 0.0)
             m.assign_lr(session, config.learning_rate) #* lr_decay)
 
-            print("Epoch: %d Learning rate: %.3f" % (i + 1, session.run(m.lr)))
+            print "Epoch: %d Learning rate: %.3f" % (i + 1, session.run(m.lr))
             train_perplexity = run_epoch(session, m, m.train_op, config, vocab,
-                                         verbose=True)
-            print("Epoch: %d Train Perplexity: %.3f" % (i + 1,
-                                                        train_perplexity))
+                                         saver, verbose=True)
+            print "Epoch: %d Train Perplexity: %.3f" % (i + 1,
+                                                        train_perplexity)
 
 
 if __name__ == "__main__":
