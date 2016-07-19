@@ -9,13 +9,12 @@ class Config(object):
     learn_wordemb_size = 150
     max_epoch = 6
     keep_prob = 0.5
-    batch_size = 10
-    print_every = 100
+    batch_size = 20
+    print_every = 200
     pretrained_emb = True
     conditional = True
-    attention = False # TODO
     fixed_len_features = set(['gender', 'has_dod', 'has_icu_stay', 'admission_type'])
     var_len_features = set(['diagnoses', 'procedures', 'labs', 'prescriptions'])
     mimic_embeddings = {'gender': 1, 'has_dod': 1, 'has_icu_stay': 1,
-                        'admission_type': 3, 'diagnoses': 50, 'procedures': 50,
-                        'labs': 50, 'prescriptions': 50}
+                        'admission_type': 3, 'diagnoses': 40, 'procedures': 40,
+                        'labs': 40, 'prescriptions': 40}

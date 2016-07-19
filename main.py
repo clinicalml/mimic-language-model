@@ -84,8 +84,9 @@ class LMModel(object):
                     reshaped = val_embedding
                 reduced = tf.reduce_sum(reshaped, 1)
                 emb_list.append(reduced)
-            structured_inputs = sum(emb_list)
-            inputs += tf.reduce_sum(structured_inputs) # TODO remove this, and decouple structured dims
+            transform_w = tf.get_variable("struct_transform_w", [emb_size, size])
+            transform_b = tf.get_variable("struct_transform_b", [size])
+            structured_inputs = tf.nn.bias_add(tf.matmul(sum(emb_list), transform_w), transform_b)
 
         if is_training and config.keep_prob < 1:
             inputs = tf.nn.dropout(inputs, config.keep_prob)
@@ -96,7 +97,10 @@ class LMModel(object):
             for time_step in range(num_steps):
                 if time_step > 0: tf.get_variable_scope().reuse_variables()
                 (cell_output, state) = cell(inputs[:, time_step, :], state)
-                outputs.append(cell_output)
+                if config.conditional:
+                    outputs.append(cell_output + structured_inputs)
+                else:
+                    outputs.append(cell_output)
 
         output = tf.reshape(tf.concat(1, outputs), [-1, size])
         softmax_w = tf.get_variable("softmax_w", [size, vocab_size])
@@ -109,15 +113,13 @@ class LMModel(object):
         self.cost = cost = tf.reduce_sum(loss) / batch_size
         self.final_state = state
 
-        if not is_training:
-            return
-
-        self.lr = tf.Variable(0.0, trainable=False)
-        tvars = tf.trainable_variables()
-        grads, _ = tf.clip_by_global_norm(tf.gradients(cost, tvars),
-                                          config.max_grad_norm)
-        optimizer = tf.train.AdamOptimizer(self.lr)
-        self.train_op = optimizer.apply_gradients(zip(grads, tvars))
+        if is_training:
+            self.lr = tf.Variable(0.0, trainable=False)
+            tvars = tf.trainable_variables()
+            grads, _ = tf.clip_by_global_norm(tf.gradients(cost, tvars),
+                                              config.max_grad_norm)
+            optimizer = tf.train.AdamOptimizer(self.lr)
+            self.train_op = optimizer.apply_gradients(zip(grads, tvars))
 
 
     def assign_lr(self, session, lr_value):
