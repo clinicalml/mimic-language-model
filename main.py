@@ -74,13 +74,16 @@ class LMModel(object):
                 with tf.device("/cpu:0"):
                     embedding = tf.get_variable("embedding_"+feat, [vocab_aux, config.mimic_embeddings[feat]])
                     val_embedding = tf.nn.embedding_lookup(embedding, self.aux_data[feat])
-                    val_embedding = tf.reshape(val_embedding, [-1, config.mimic_embeddings[feat]])
-                transform_w = tf.get_variable("emb_transform_"+feat, [config.mimic_embeddings[feat], emb_size])
-                transformed = tf.matmul(val_embedding, transform_w)
-                reshaped = tf.reshape(transformed, tf.pack([batch_size, -1, emb_size]))
+                    if config.mimic_embeddings[feat] < emb_size:
+                        val_embedding = tf.reshape(val_embedding, [-1, config.mimic_embeddings[feat]])
+                if config.mimic_embeddings[feat] < emb_size:
+                    transform_w = tf.get_variable("emb_transform_"+feat, [config.mimic_embeddings[feat], emb_size])
+                    transformed = tf.matmul(val_embedding, transform_w)
+                    reshaped = tf.reshape(transformed, tf.pack([batch_size, -1, emb_size]))
+                else:
+                    reshaped = val_embedding
                 reduced = tf.reduce_sum(reshaped, 1)
                 emb_list.append(reduced)
-
             structured_inputs = sum(emb_list)
             inputs += tf.reduce_sum(structured_inputs) # TODO remove this, and decouple structured dims
 
