@@ -13,7 +13,6 @@
 # limitations under the License.
 #==============================================================================
 
-"""Based on the TensorFlow tutorial for building a PTB LSTM model."""
 from __future__ import division
 
 import time
@@ -23,6 +22,7 @@ import tensorflow as tf
 
 from config import Config
 import reader
+import utils
 
 
 class LMModel(object):
@@ -30,8 +30,9 @@ class LMModel(object):
 
     def __init__(self, is_training, config):
         self.is_training = is_training
-        self.batch_size = batch_size = config.batch_size
-        self.num_steps = num_steps = config.num_steps
+
+        batch_size = config.batch_size
+        num_steps = config.num_steps
 
         self.input_data = tf.placeholder(tf.int32, [batch_size, num_steps])
         self.targets = tf.placeholder(tf.int32, [batch_size, num_steps])
@@ -109,6 +110,7 @@ class LMModel(object):
 
     def rnn(self, inputs, structured_inputs, cell, config):
         outputs = []
+        nocond_outputs = [] # to verify if conditioning is helping, and if so, where
         state = self.initial_state
         with tf.variable_scope("RNN"):
             for time_step in range(config.num_steps):
@@ -133,19 +135,27 @@ class LMModel(object):
                     outputs.append(cell_output + (gate * structured_inputs))
                 else:
                     outputs.append(cell_output)
-        return outputs, state
+                nocond_outputs.append(cell_output)
+        return outputs, state, nocond_outputs
 
 
-    def softmax_loss(self, outputs, config):
+    def softmax_loss(self, outputs, nocond_outputs, config):
         output = tf.reshape(tf.concat(1, outputs), [-1, config.hidden_size])
+        nocond_output = tf.reshape(tf.concat(1, nocond_outputs), [-1, config.hidden_size])
         softmax_w = tf.get_variable("softmax_w", [config.hidden_size, config.vocab_size],
                                     initializer=tf.contrib.layers.xavier_initializer())
         softmax_b = tf.get_variable("softmax_b", [config.vocab_size],
                                     initializer=tf.ones_initializer)
         logits = tf.matmul(output, softmax_w) + softmax_b
-        return tf.nn.seq2seq.sequence_loss_by_example([logits],
+        nocond_logits = tf.matmul(nocond_output, softmax_w) + softmax_b
+        loss = tf.nn.seq2seq.sequence_loss_by_example([logits],
                                                       [tf.reshape(self.targets, [-1])],
                                                       [tf.reshape(self.mask, [-1])])
+        nocond_loss = tf.nn.seq2seq.sequence_loss_by_example([nocond_logits],
+                                                             [tf.reshape(self.targets, [-1])],
+                                                             [tf.reshape(self.mask, [-1])])
+        return tf.reshape(loss, [config.batch_size, config.num_steps]), \
+               tf.reshape(nocond_loss, [config.batch_size, config.num_steps])
 
 
     def prepare(self, config, vocab):
@@ -157,27 +167,29 @@ class LMModel(object):
         if config.conditional:
             structured_inputs = self.struct_embeddings(config, vocab)
 
-        outputs ,self.final_state = self.rnn(inputs, structured_inputs, cell, config)
-        loss = self.softmax_loss(outputs, config)
-
-        self.cost = tf.reduce_sum(loss) / config.batch_size
+        outputs ,self.final_state, nocond_outputs = self.rnn(inputs, structured_inputs, cell,
+                                                             config)
+        self.loss, self.nocond_loss = self.softmax_loss(outputs, nocond_outputs, config)
+        self.cost = tf.reduce_sum(self.loss) / config.batch_size
         if self.is_training:
-            self.optimize(config)
+            self.train_op = self.train(config)
+        else:
+            self.train_op = tf.no_op()
 
 
     def assign_lr(self, session, lr_value):
         session.run(tf.assign(self.lr, lr_value))
 
 
-    def optimize(self, config):
+    def train(self, config):
         self.lr = tf.Variable(0.0, trainable=False)
         tvars = tf.trainable_variables()
         grads, _ = tf.clip_by_global_norm(tf.gradients(self.cost, tvars), config.max_grad_norm)
         optimizer = tf.train.AdamOptimizer(self.lr)
-        self.train_op = optimizer.apply_gradients(zip(grads, tvars))
+        return optimizer.apply_gradients(zip(grads, tvars))
 
 
-def run_epoch(session, m, eval_op, config, vocab, saver, verbose=False):
+def run_epoch(session, m, config, vocab, saver, verbose=False):
     """Runs the model on the given data."""
     start_time = time.time()
     costs = 0.0
@@ -185,8 +197,38 @@ def run_epoch(session, m, eval_op, config, vocab, saver, verbose=False):
     shortterm_costs = 0.0
     shortterm_iters = 0
     zero_state = m.initial_state.eval()
+    batches = 0
+    inspect = False
     for step, (x, y, mask, aux, aux_len, new_batch) in enumerate(reader.mimic_iterator(config,
                                                                                        vocab)):
+        if config.conditional and new_batch:
+            batches += 1
+            if inspect:
+                X = np.concatenate(xs, 1)
+                M = np.concatenate([np.ones([config.batch_size, 1])] + ms, 1)
+                diffs = np.concatenate([np.zeros([config.batch_size, 1])] + differences, 1)
+                for i in range(config.batch_size):
+                    print
+                    for j in range(len(X[i])):
+                        if not M[i,j]: break
+                        utils.print_color(vocab.vocab_list[X[i,j]].ljust(len("%.2f" % diffs[i,j])),
+                                          utils.inspection_decide_color(diffs[i,j]))
+                    print
+                    for j in range(len(X[i])):
+                        if not M[i,j]: break
+                        utils.print_color(
+                                        ("%.2f" % diffs[i,j]).ljust(len(vocab.vocab_list[X[i,j]])),
+                                          utils.inspection_decide_color(diffs[i,j]))
+                    print
+                print
+            if batches % config.inspect_every == 0:
+                inspect = True
+                xs = []
+                ms = []
+                differences = []
+            else:
+                inspect = False
+
         f_dict = {m.input_data: x,
                   m.targets: y,
                   m.mask: mask}
@@ -198,16 +240,26 @@ def run_epoch(session, m, eval_op, config, vocab, saver, verbose=False):
             for feat, vals in aux.items():
                 f_dict[m.aux_data[feat]] = vals
                 f_dict[m.aux_data_len[feat]] = aux_len[feat]
-        cost, state, _ = session.run([m.cost, m.final_state, eval_op], f_dict)
+
+        if inspect:
+            cost, state, loss, nocond_loss, _ = session.run([m.cost, m.final_state, m.loss,
+                                                             m.nocond_loss, m.train_op], f_dict)
+            difference = np.exp(-loss) - np.exp(-nocond_loss)
+            xs.append(x)
+            ms.append(mask)
+            differences.append(difference)
+        else:
+            cost, state, _ = session.run([m.cost, m.final_state, m.train_op], f_dict)
+
         costs += cost
-        iters += m.num_steps
+        iters += config.num_steps
         shortterm_costs += cost
-        shortterm_iters += m.num_steps
+        shortterm_iters += config.num_steps
 
         if verbose and step % config.print_every == 0:
             print("%d  perplexity: %.3f speed: %.0f wps" %
                         (step, np.exp(shortterm_costs / shortterm_iters),
-                         shortterm_iters * m.batch_size / (time.time() - start_time)))
+                         shortterm_iters * config.batch_size / (time.time() - start_time)))
             shortterm_costs = 0.0
             shortterm_iters = 0
             start_time = time.time()
@@ -246,8 +298,7 @@ def main(_):
             m.assign_lr(session, config.learning_rate) #* lr_decay)
 
             print "Epoch: %d Learning rate: %.3f" % (i + 1, session.run(m.lr))
-            train_perplexity = run_epoch(session, m, m.train_op, config, vocab,
-                                         saver, verbose=True)
+            train_perplexity = run_epoch(session, m, config, vocab, saver, verbose=True)
             print "Epoch: %d Train Perplexity: %.3f" % (i + 1,
                                                         train_perplexity)
 
