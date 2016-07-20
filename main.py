@@ -55,7 +55,8 @@ class LMModel(object):
     def word_embeddings(self, config, vocab):
         with tf.device("/cpu:0"):
             embedding = tf.get_variable("embedding", [config.vocab_size,
-                                                      config.learn_wordemb_size])
+                                                      config.learn_wordemb_size],
+                                        initializer=tf.contrib.layers.xavier_initializer())
             if config.pretrained_emb:
                 cembedding = tf.constant(vocab.embeddings, dtype=embedding.dtype,
                                          name="pre_embedding")
@@ -76,7 +77,8 @@ class LMModel(object):
                 vocab_aux = 2 # binary
             with tf.device("/cpu:0"):
                 embedding = tf.get_variable("embedding_"+feat, [vocab_aux,
-                                                                config.mimic_embeddings[feat]])
+                                                                config.mimic_embeddings[feat]],
+                                            initializer=tf.contrib.layers.xavier_initializer())
                 if feat in config.var_len_features:
                     padzero = np.ones([vocab_aux, 1])
                     padzero[0,0] = 0
@@ -88,7 +90,8 @@ class LMModel(object):
                                                                config.mimic_embeddings[feat]])
             if config.mimic_embeddings[feat] < emb_size:
                 transform_w = tf.get_variable("emb_transform_"+feat,
-                                              [config.mimic_embeddings[feat], emb_size])
+                                              [config.mimic_embeddings[feat], emb_size],
+                                              initializer=tf.contrib.layers.xavier_initializer())
                 transformed = tf.matmul(val_embedding, transform_w)
                 reshaped = tf.reshape(transformed, tf.pack([config.batch_size, -1, emb_size]))
             else:
@@ -97,8 +100,10 @@ class LMModel(object):
                       tf.reshape(tf.maximum(self.aux_data_len[feat], 1),
                                             [config.batch_size, 1]) # mean
             emb_list.append(reduced)
-        transform_w = tf.get_variable("struct_transform_w", [emb_size, config.hidden_size])
-        transform_b = tf.get_variable("struct_transform_b", [config.hidden_size])
+        transform_w = tf.get_variable("struct_transform_w", [emb_size, config.hidden_size],
+                                      initializer=tf.contrib.layers.xavier_initializer())
+        transform_b = tf.get_variable("struct_transform_b", [config.hidden_size],
+                                      initializer=tf.ones_initializer)
         return tf.nn.bias_add(tf.matmul(sum(emb_list), transform_w), transform_b)
 
 
@@ -120,8 +125,10 @@ class LMModel(object):
                     concat = tf.concat(1, [state, dropped_inputs])
                     gate_w = tf.get_variable("struct_gate_w",
                                              [config.hidden_size * (1 + (2 * config.num_layers)),
-                                              config.hidden_size])
-                    gate_b = tf.get_variable("struct_gate_b", [config.hidden_size])
+                                              config.hidden_size],
+                                             initializer=tf.contrib.layers.xavier_initializer())
+                    gate_b = tf.get_variable("struct_gate_b", [config.hidden_size],
+                                             initializer=tf.ones_initializer)
                     gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(concat, gate_w), gate_b))
                     outputs.append(cell_output + (gate * structured_inputs))
                 else:
@@ -131,8 +138,10 @@ class LMModel(object):
 
     def softmax_loss(self, outputs, config):
         output = tf.reshape(tf.concat(1, outputs), [-1, config.hidden_size])
-        softmax_w = tf.get_variable("softmax_w", [config.hidden_size, config.vocab_size])
-        softmax_b = tf.get_variable("softmax_b", [config.vocab_size])
+        softmax_w = tf.get_variable("softmax_w", [config.hidden_size, config.vocab_size],
+                                    initializer=tf.contrib.layers.xavier_initializer())
+        softmax_b = tf.get_variable("softmax_b", [config.vocab_size],
+                                    initializer=tf.ones_initializer)
         logits = tf.matmul(output, softmax_w) + softmax_b
         return tf.nn.seq2seq.sequence_loss_by_example([logits],
                                                       [tf.reshape(self.targets, [-1])],
@@ -221,9 +230,7 @@ def main(_):
     config_proto = tf.ConfigProto()
     config_proto.gpu_options.allow_growth = True
     with tf.Graph().as_default(), tf.Session(config=config_proto) as session:
-        initializer = tf.random_uniform_initializer(-config.init_scale,
-                                                    config.init_scale)
-        with tf.variable_scope("model", reuse=None, initializer=initializer):
+        with tf.variable_scope("model", reuse=None):
             m = LMModel(is_training=True, config=config)
             m.prepare(config, vocab)
         saver = tf.train.Saver()
