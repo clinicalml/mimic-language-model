@@ -28,11 +28,10 @@ import reader
 class LMModel(object):
     """The language model."""
 
-    def __init__(self, is_training, config, vocab):
+    def __init__(self, is_training, config):
+        self.is_training = is_training
         self.batch_size = batch_size = config.batch_size
         self.num_steps = num_steps = config.num_steps
-        size = config.hidden_size
-        vocab_size = config.vocab_size
 
         self.input_data = tf.placeholder(tf.int32, [batch_size, num_steps])
         self.targets = tf.placeholder(tf.int32, [batch_size, num_steps])
@@ -45,100 +44,128 @@ class LMModel(object):
                     self.aux_data[feat] = tf.placeholder(tf.int32, [batch_size, None])
                     self.aux_data_len[feat] = tf.placeholder(tf.float32, [batch_size])
 
-        lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(size)
-        if is_training and config.keep_prob < 1:
+
+    def rnn_cell(self, config):
+        lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(config.hidden_size)
+        if self.is_training and config.keep_prob < 1:
             lstm_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, output_keep_prob=config.keep_prob)
-        cell = tf.nn.rnn_cell.MultiRNNCell([lstm_cell] * config.num_layers)
+        return tf.nn.rnn_cell.MultiRNNCell([lstm_cell] * config.num_layers)
 
-        self.initial_state = cell.zero_state(batch_size, tf.float32)
 
+    def word_embeddings(self, config, vocab):
         with tf.device("/cpu:0"):
-            embedding = tf.get_variable("embedding", [vocab_size, config.learn_wordemb_size])
+            embedding = tf.get_variable("embedding", [config.vocab_size,
+                                                      config.learn_wordemb_size])
             if config.pretrained_emb:
                 cembedding = tf.constant(vocab.embeddings, dtype=embedding.dtype,
                                          name="pre_embedding")
                 embedding = tf.concat(1, [embedding, cembedding])
             inputs = tf.nn.embedding_lookup(embedding, self.input_data)
-
-        if config.conditional:
-            emb_size = max(config.mimic_embeddings.values())
-            emb_list = []
-            for i, (feat, dims) in enumerate(config.mimic_embeddings.items()):
-                try:
-                    vocab_aux = len(vocab.aux_list[feat])
-                except KeyError:
-                    vocab_aux = 2 # binary
-                with tf.device("/cpu:0"):
-                    embedding = tf.get_variable("embedding_"+feat, [vocab_aux,
-                                                                    config.mimic_embeddings[feat]])
-                    if feat in config.var_len_features:
-                        padzero = np.ones([vocab_aux, 1])
-                        padzero[0,0] = 0
-                        padzero = tf.constant(padzero, dtype=tf.float32)
-                        embedding = embedding * padzero # force 0 to have zero embedding
-                    val_embedding = tf.nn.embedding_lookup(embedding, self.aux_data[feat])
-                    if config.mimic_embeddings[feat] < emb_size:
-                        val_embedding = tf.reshape(val_embedding, [-1,
-                                                                   config.mimic_embeddings[feat]])
-                if config.mimic_embeddings[feat] < emb_size:
-                    transform_w = tf.get_variable("emb_transform_"+feat,
-                                                  [config.mimic_embeddings[feat], emb_size])
-                    transformed = tf.matmul(val_embedding, transform_w)
-                    reshaped = tf.reshape(transformed, tf.pack([batch_size, -1, emb_size]))
-                else:
-                    reshaped = val_embedding
-                reduced = tf.reduce_sum(reshaped, 1) / \
-                          tf.reshape(tf.maximum(self.aux_data_len[feat], 1),
-                                                [batch_size, 1]) # mean
-                emb_list.append(reduced)
-            transform_w = tf.get_variable("struct_transform_w", [emb_size, size])
-            transform_b = tf.get_variable("struct_transform_b", [size])
-            structured_inputs = tf.nn.bias_add(tf.matmul(sum(emb_list), transform_w), transform_b)
-
-        if is_training and config.keep_prob < 1:
+        if self.is_training and config.keep_prob < 1:
             inputs = tf.nn.dropout(inputs, config.keep_prob)
+        return inputs
 
+
+    def struct_embeddings(self, config, vocab):
+        emb_size = max(config.mimic_embeddings.values())
+        emb_list = []
+        for i, (feat, dims) in enumerate(config.mimic_embeddings.items()):
+            try:
+                vocab_aux = len(vocab.aux_list[feat])
+            except KeyError:
+                vocab_aux = 2 # binary
+            with tf.device("/cpu:0"):
+                embedding = tf.get_variable("embedding_"+feat, [vocab_aux,
+                                                                config.mimic_embeddings[feat]])
+                if feat in config.var_len_features:
+                    padzero = np.ones([vocab_aux, 1])
+                    padzero[0,0] = 0
+                    padzero = tf.constant(padzero, dtype=tf.float32)
+                    embedding = embedding * padzero # force 0 to have zero embedding
+                val_embedding = tf.nn.embedding_lookup(embedding, self.aux_data[feat])
+                if config.mimic_embeddings[feat] < emb_size:
+                    val_embedding = tf.reshape(val_embedding, [-1,
+                                                               config.mimic_embeddings[feat]])
+            if config.mimic_embeddings[feat] < emb_size:
+                transform_w = tf.get_variable("emb_transform_"+feat,
+                                              [config.mimic_embeddings[feat], emb_size])
+                transformed = tf.matmul(val_embedding, transform_w)
+                reshaped = tf.reshape(transformed, tf.pack([config.batch_size, -1, emb_size]))
+            else:
+                reshaped = val_embedding
+            reduced = tf.reduce_sum(reshaped, 1) / \
+                      tf.reshape(tf.maximum(self.aux_data_len[feat], 1),
+                                            [config.batch_size, 1]) # mean
+            emb_list.append(reduced)
+        transform_w = tf.get_variable("struct_transform_w", [emb_size, config.hidden_size])
+        transform_b = tf.get_variable("struct_transform_b", [config.hidden_size])
+        return tf.nn.bias_add(tf.matmul(sum(emb_list), transform_w), transform_b)
+
+
+    def rnn(self, inputs, structured_inputs, cell, config):
         outputs = []
         state = self.initial_state
         with tf.variable_scope("RNN"):
-            for time_step in range(num_steps):
+            for time_step in range(config.num_steps):
                 if time_step > 0: tf.get_variable_scope().reuse_variables()
                 (cell_output, state) = cell(inputs[:, time_step, :], state)
                 if config.conditional:
-                    # state is:              batch_size x 2 * size * config.num_layers
-                    # structured_inputs is:  batch_size x size
-                    # concat is:             batch_size x size * (1 + (2 * config.num_layers))
-                    concat = tf.concat(1, [state, structured_inputs])
+                    if self.is_training and config.keep_prob < 1:
+                        dropped_inputs = tf.nn.dropout(structured_inputs, config.keep_prob)
+                    else:
+                        dropped_inputs = structured_inputs
+                    # state is:           batch_size x 2 * size * num_layers
+                    # dropped_inputs is:  batch_size x size
+                    # concat is:          batch_size x size * (1 + (2 * num_layers))
+                    concat = tf.concat(1, [state, dropped_inputs])
                     gate_w = tf.get_variable("struct_gate_w",
-                                             [size * (1 + (2 * config.num_layers)), size])
-                    gate_b = tf.get_variable("struct_gate_b", [size])
+                                             [config.hidden_size * (1 + (2 * config.num_layers)),
+                                              config.hidden_size])
+                    gate_b = tf.get_variable("struct_gate_b", [config.hidden_size])
                     gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(concat, gate_w), gate_b))
                     outputs.append(cell_output + (gate * structured_inputs))
                 else:
                     outputs.append(cell_output)
+        return outputs, state
 
-        output = tf.reshape(tf.concat(1, outputs), [-1, size])
-        softmax_w = tf.get_variable("softmax_w", [size, vocab_size])
-        softmax_b = tf.get_variable("softmax_b", [vocab_size])
+
+    def softmax_loss(self, outputs, config):
+        output = tf.reshape(tf.concat(1, outputs), [-1, config.hidden_size])
+        softmax_w = tf.get_variable("softmax_w", [config.hidden_size, config.vocab_size])
+        softmax_b = tf.get_variable("softmax_b", [config.vocab_size])
         logits = tf.matmul(output, softmax_w) + softmax_b
-        loss = tf.nn.seq2seq.sequence_loss_by_example(
-                [logits],
-                [tf.reshape(self.targets, [-1])],
-                [tf.reshape(self.mask, [-1])])
-        self.cost = cost = tf.reduce_sum(loss) / batch_size
-        self.final_state = state
+        return tf.nn.seq2seq.sequence_loss_by_example([logits],
+                                                      [tf.reshape(self.targets, [-1])],
+                                                      [tf.reshape(self.mask, [-1])])
 
-        if is_training:
-            self.lr = tf.Variable(0.0, trainable=False)
-            tvars = tf.trainable_variables()
-            grads, _ = tf.clip_by_global_norm(tf.gradients(cost, tvars),
-                                              config.max_grad_norm)
-            optimizer = tf.train.AdamOptimizer(self.lr)
-            self.train_op = optimizer.apply_gradients(zip(grads, tvars))
+
+    def prepare(self, config, vocab):
+        cell = self.rnn_cell(config)
+        self.initial_state = cell.zero_state(config.batch_size, tf.float32)
+
+        inputs = self.word_embeddings(config, vocab)
+        structured_inputs = None
+        if config.conditional:
+            structured_inputs = self.struct_embeddings(config, vocab)
+
+        outputs ,self.final_state = self.rnn(inputs, structured_inputs, cell, config)
+        loss = self.softmax_loss(outputs, config)
+
+        self.cost = tf.reduce_sum(loss) / config.batch_size
+        if self.is_training:
+            self.optimize(config)
 
 
     def assign_lr(self, session, lr_value):
         session.run(tf.assign(self.lr, lr_value))
+
+
+    def optimize(self, config):
+        self.lr = tf.Variable(0.0, trainable=False)
+        tvars = tf.trainable_variables()
+        grads, _ = tf.clip_by_global_norm(tf.gradients(self.cost, tvars), config.max_grad_norm)
+        optimizer = tf.train.AdamOptimizer(self.lr)
+        self.train_op = optimizer.apply_gradients(zip(grads, tvars))
 
 
 def run_epoch(session, m, eval_op, config, vocab, saver, verbose=False):
@@ -197,7 +224,8 @@ def main(_):
         initializer = tf.random_uniform_initializer(-config.init_scale,
                                                     config.init_scale)
         with tf.variable_scope("model", reuse=None, initializer=initializer):
-            m = LMModel(is_training=True, config=config, vocab=vocab)
+            m = LMModel(is_training=True, config=config)
+            m.prepare(config, vocab)
         saver = tf.train.Saver()
         try:
             saver.restore(session, config.load_file)
