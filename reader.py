@@ -82,11 +82,14 @@ def mimic_iterator(config, vocab):
                 if config.conditional:
                     batch_aux_data = {}
                     for (feat, vals) in raw_aux_data.items():
-                        batch_aux_data[feat] = vals[config.batch_size * batch : config.batch_size * (batch + 1)]
+                        batch_aux_data[feat] = vals[config.batch_size * batch : \
+                                                    config.batch_size * (batch + 1)]
                 max_note_len = max(len(note) for note in batch_data)
                 epoch_size = ((max_note_len - 2) // config.num_steps) + 1
-                data = np.zeros([config.batch_size, epoch_size * config.num_steps + 1], dtype=np.int32)
-                mask = np.zeros([config.batch_size, epoch_size * config.num_steps + 1], dtype=np.float32)
+                data = np.zeros([config.batch_size, epoch_size * config.num_steps + 1],
+                                dtype=np.int32)
+                mask = np.zeros([config.batch_size, epoch_size * config.num_steps + 1],
+                                dtype=np.float32)
                 for i, iter_data in enumerate(batch_data):
                     data[i, 0:len(iter_data)] = iter_data
                     mask[i, 0:len(iter_data)] = 1.0
@@ -97,7 +100,8 @@ def mimic_iterator(config, vocab):
                             max_struct_len = 1
                         else:
                             max_struct_len = max(len(v) for v in vals)
-                        aux_data[feat] = np.zeros([config.batch_size, max_struct_len], dtype=np.int32)
+                        aux_data[feat] = np.zeros([config.batch_size, max_struct_len],
+                                                  dtype=np.int32)
                         for i, iter_data in enumerate(vals):
                             if feat in config.fixed_len_features:
                                 aux_data[feat][i, 0] = iter_data

@@ -67,12 +67,15 @@ class LMModel(object):
                 except KeyError:
                     vocab_aux = 2 # binary
                 with tf.device("/cpu:0"):
-                    embedding = tf.get_variable("embedding_"+feat, [vocab_aux, config.mimic_embeddings[feat]])
+                    embedding = tf.get_variable("embedding_"+feat, [vocab_aux,
+                                                                    config.mimic_embeddings[feat]])
                     val_embedding = tf.nn.embedding_lookup(embedding, self.aux_data[feat])
                     if config.mimic_embeddings[feat] < emb_size:
-                        val_embedding = tf.reshape(val_embedding, [-1, config.mimic_embeddings[feat]])
+                        val_embedding = tf.reshape(val_embedding, [-1,
+                                                                   config.mimic_embeddings[feat]])
                 if config.mimic_embeddings[feat] < emb_size:
-                    transform_w = tf.get_variable("emb_transform_"+feat, [config.mimic_embeddings[feat], emb_size])
+                    transform_w = tf.get_variable("emb_transform_"+feat,
+                                                  [config.mimic_embeddings[feat], emb_size])
                     transformed = tf.matmul(val_embedding, transform_w)
                     reshaped = tf.reshape(transformed, tf.pack([batch_size, -1, emb_size]))
                 else:
@@ -126,6 +129,8 @@ def run_epoch(session, m, eval_op, config, vocab, saver, verbose=False):
     start_time = time.time()
     costs = 0.0
     iters = 0
+    shortterm_costs = 0.0
+    shortterm_iters = 0
     zero_state = m.initial_state.eval()
     for step, (x, y, mask, aux, new_batch) in enumerate(reader.mimic_iterator(config, vocab)):
         f_dict = {m.input_data: x,
@@ -141,11 +146,15 @@ def run_epoch(session, m, eval_op, config, vocab, saver, verbose=False):
         cost, state, _ = session.run([m.cost, m.final_state, eval_op], f_dict)
         costs += cost
         iters += m.num_steps
+        shortterm_costs += cost
+        shortterm_iters += m.num_steps
 
         if verbose and step % config.print_every == 0:
             print("%d  perplexity: %.3f speed: %.0f wps" %
-                        (step, np.exp(costs / iters),
+                        (step, np.exp(shortterm_costs / shortterm_iters),
                          iters * m.batch_size / (time.time() - start_time)))
+            shortterm_costs = 0.0
+            shortterm_iters = 0
         if step and step % config.save_every == 0:
             if verbose: print "Saving model ..."
             save_file = saver.save(session, config.save_file)
