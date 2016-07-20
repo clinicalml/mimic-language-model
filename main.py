@@ -39,9 +39,11 @@ class LMModel(object):
         self.mask = tf.placeholder(tf.float32, [batch_size, num_steps])
         if config.conditional:
             self.aux_data = {}
+            self.aux_data_len = {}
             for feat, dims in config.mimic_embeddings.items():
                 if dims > 0:
                     self.aux_data[feat] = tf.placeholder(tf.int32, [batch_size, None])
+                    self.aux_data_len[feat] = tf.placeholder(tf.float32, [batch_size])
 
         lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(size)
         if is_training and config.keep_prob < 1:
@@ -69,6 +71,11 @@ class LMModel(object):
                 with tf.device("/cpu:0"):
                     embedding = tf.get_variable("embedding_"+feat, [vocab_aux,
                                                                     config.mimic_embeddings[feat]])
+                    if feat in config.var_len_features:
+                        padzero = np.ones([vocab_aux, 1])
+                        padzero[0,0] = 0
+                        padzero = tf.constant(padzero, dtype=tf.float32)
+                        embedding = embedding * padzero # force 0 to have zero embedding
                     val_embedding = tf.nn.embedding_lookup(embedding, self.aux_data[feat])
                     if config.mimic_embeddings[feat] < emb_size:
                         val_embedding = tf.reshape(val_embedding, [-1,
@@ -80,7 +87,9 @@ class LMModel(object):
                     reshaped = tf.reshape(transformed, tf.pack([batch_size, -1, emb_size]))
                 else:
                     reshaped = val_embedding
-                reduced = tf.reduce_sum(reshaped, 1)
+                reduced = tf.reduce_sum(reshaped, 1) / \
+                          tf.reshape(tf.maximum(self.aux_data_len[feat], 1),
+                                                [batch_size, 1]) # mean
                 emb_list.append(reduced)
             transform_w = tf.get_variable("struct_transform_w", [emb_size, size])
             transform_b = tf.get_variable("struct_transform_b", [size])
@@ -96,7 +105,15 @@ class LMModel(object):
                 if time_step > 0: tf.get_variable_scope().reuse_variables()
                 (cell_output, state) = cell(inputs[:, time_step, :], state)
                 if config.conditional:
-                    outputs.append(cell_output + structured_inputs)
+                    # state is:              batch_size x 2 * size * config.num_layers
+                    # structured_inputs is:  batch_size x size
+                    # concat is:             batch_size x size * (1 + (2 * config.num_layers))
+                    concat = tf.concat(1, [state, structured_inputs])
+                    gate_w = tf.get_variable("struct_gate_w",
+                                             [size * (1 + (2 * config.num_layers)), size])
+                    gate_b = tf.get_variable("struct_gate_b", [size])
+                    gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(concat, gate_w), gate_b))
+                    outputs.append(cell_output + (gate * structured_inputs))
                 else:
                     outputs.append(cell_output)
 
@@ -132,7 +149,8 @@ def run_epoch(session, m, eval_op, config, vocab, saver, verbose=False):
     shortterm_costs = 0.0
     shortterm_iters = 0
     zero_state = m.initial_state.eval()
-    for step, (x, y, mask, aux, new_batch) in enumerate(reader.mimic_iterator(config, vocab)):
+    for step, (x, y, mask, aux, aux_len, new_batch) in enumerate(reader.mimic_iterator(config,
+                                                                                       vocab)):
         f_dict = {m.input_data: x,
                   m.targets: y,
                   m.mask: mask}
@@ -143,6 +161,7 @@ def run_epoch(session, m, eval_op, config, vocab, saver, verbose=False):
         if config.conditional:
             for feat, vals in aux.items():
                 f_dict[m.aux_data[feat]] = vals
+                f_dict[m.aux_data_len[feat]] = aux_len[feat]
         cost, state, _ = session.run([m.cost, m.final_state, eval_op], f_dict)
         costs += cost
         iters += m.num_steps

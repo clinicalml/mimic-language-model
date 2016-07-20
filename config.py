@@ -28,7 +28,7 @@ class Config(object):
     fixed_len_features = set(['gender', 'has_dod', 'has_icu_stay', 'admission_type'])
     var_len_features = set(['diagnoses', 'procedures', 'labs', 'prescriptions'])
     mimic_embeddings = {'gender': 1, 'has_dod': 1, 'has_icu_stay': 1, 'admission_type': 3,
-                        'diagnoses': 40, 'procedures': 40, 'labs': 40, 'prescriptions': 40}
+                        'diagnoses': 50, 'procedures': 50, 'labs': 50, 'prescriptions': 50}
 
 
     def __init__(self):
