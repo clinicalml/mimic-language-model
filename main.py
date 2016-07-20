@@ -152,9 +152,10 @@ def run_epoch(session, m, eval_op, config, vocab, saver, verbose=False):
         if verbose and step % config.print_every == 0:
             print("%d  perplexity: %.3f speed: %.0f wps" %
                         (step, np.exp(shortterm_costs / shortterm_iters),
-                         iters * m.batch_size / (time.time() - start_time)))
+                         shortterm_iters * m.batch_size / (time.time() - start_time)))
             shortterm_costs = 0.0
             shortterm_iters = 0
+            start_time = time.time()
         if step and step % config.save_every == 0:
             if verbose: print "Saving model ..."
             save_file = saver.save(session, config.save_file)
