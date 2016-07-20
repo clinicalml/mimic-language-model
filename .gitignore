@@ -1,6 +1,9 @@
+# Application-specific
+data
+*.dat
+
 # Tensorflow
 checkpoint
-*.dat
 *.meta
 
 # Byte-compiled / optimized / DLL files
