@@ -142,21 +142,26 @@ class LMModel(object):
 
     def softmax_loss(self, outputs, nocond_outputs, config):
         output = tf.reshape(tf.concat(1, outputs), [-1, config.hidden_size])
-        nocond_output = tf.reshape(tf.concat(1, nocond_outputs), [-1, config.hidden_size])
+        if config.conditional:
+            nocond_output = tf.reshape(tf.concat(1, nocond_outputs), [-1, config.hidden_size])
         softmax_w = tf.get_variable("softmax_w", [config.hidden_size, config.vocab_size],
                                     initializer=tf.contrib.layers.xavier_initializer())
         softmax_b = tf.get_variable("softmax_b", [config.vocab_size],
                                     initializer=tf.ones_initializer)
         logits = tf.matmul(output, softmax_w) + softmax_b
-        nocond_logits = tf.matmul(nocond_output, softmax_w) + softmax_b
+        if config.conditional:
+            nocond_logits = tf.matmul(nocond_output, softmax_w) + softmax_b
         loss = tf.nn.seq2seq.sequence_loss_by_example([logits],
                                                       [tf.reshape(self.targets, [-1])],
                                                       [tf.reshape(self.mask, [-1])])
-        nocond_loss = tf.nn.seq2seq.sequence_loss_by_example([nocond_logits],
-                                                             [tf.reshape(self.targets, [-1])],
-                                                             [tf.reshape(self.mask, [-1])])
-        return tf.reshape(loss, [config.batch_size, config.num_steps]), \
-               tf.reshape(nocond_loss, [config.batch_size, config.num_steps])
+        if config.conditional:
+            nocond_loss = tf.nn.seq2seq.sequence_loss_by_example([nocond_logits],
+                                                                 [tf.reshape(self.targets, [-1])],
+                                                                 [tf.reshape(self.mask, [-1])])
+            return tf.reshape(loss, [config.batch_size, config.num_steps]), \
+                   tf.reshape(nocond_loss, [config.batch_size, config.num_steps])
+        else:
+            return tf.reshape(loss, [config.batch_size, config.num_steps]), None
 
 
     def prepare(self, config, vocab):
