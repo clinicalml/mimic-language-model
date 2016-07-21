@@ -200,7 +200,7 @@ def run_epoch(session, m, config, vocab, saver, verbose=False):
     inspect = False
     for step, (x, y, mask, aux, aux_len, new_batch) in enumerate(reader.mimic_iterator(config,
                                                                                        vocab)):
-        if not config.training and config.conditional and new_batch:
+        if new_batch and not config.training and config.conditional and config.inspect_every > 0:
             batches += 1
             if inspect:
                 utils.inspect_conditional_utility(xs, ms, differences, config, vocab)
