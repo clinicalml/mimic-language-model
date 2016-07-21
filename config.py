@@ -17,7 +17,7 @@ flags.DEFINE_integer("max_epoch",          6,     "Maximum number of epochs to r
 flags.DEFINE_float  ("keep_prob",          0.5,   "Dropout keep probability")
 flags.DEFINE_integer("batch_size",         25,    "Batch size")
 flags.DEFINE_integer("print_every",        500,   "Print every these many steps")
-flags.DEFINE_integer("inspect_every",      1000,   "Inspect a batch every these many batches")
+flags.DEFINE_integer("inspect_every",      500,   "Inspect a batch every these many batches")
 flags.DEFINE_integer("save_every",         25000, "Save every these many steps")
 flags.DEFINE_bool   ("pretrained_emb",     True,  "Use pretrained embeddings")
 flags.DEFINE_bool   ("conditional",        True,  "Use a conditional language model")
