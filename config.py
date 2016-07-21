@@ -15,6 +15,7 @@ flags.DEFINE_integer("learn_wordemb_size", 150,   "Number of learnable dimension
                                                   "embeddings")
 flags.DEFINE_integer("max_epoch",          6,     "Maximum number of epochs to run for")
 flags.DEFINE_float  ("keep_prob",          0.5,   "Dropout keep probability")
+flags.DEFINE_float  ("struct_keep_prob",   0.5,   "Structural info dropout keep probability")
 flags.DEFINE_integer("batch_size",         25,    "Batch size")
 flags.DEFINE_integer("print_every",        500,   "Print every these many steps")
 flags.DEFINE_integer("inspect_every",      -1,    "Inspect a batch every these many batches " \

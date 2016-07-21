@@ -102,9 +102,7 @@ class LMModel(object):
             emb_list.append(reduced)
         transform_w = tf.get_variable("struct_transform_w", [emb_size, config.hidden_size],
                                       initializer=tf.contrib.layers.xavier_initializer())
-        transform_b = tf.get_variable("struct_transform_b", [config.hidden_size],
-                                      initializer=tf.ones_initializer)
-        return tf.nn.bias_add(tf.matmul(sum(emb_list), transform_w), transform_b)
+        return tf.matmul(sum(emb_list), transform_w)
 
 
     def rnn(self, inputs, structured_inputs, cell, config):
@@ -117,13 +115,15 @@ class LMModel(object):
                 (cell_output, state) = cell(inputs[:, time_step, :], state)
                 if config.conditional:
                     if config.training and config.keep_prob < 1:
-                        dropped_inputs = tf.nn.dropout(structured_inputs, config.keep_prob)
+                        dropped_inputs = tf.nn.dropout(structured_inputs, config.struct_keep_prob,
+                                                       noise_shape=[config.batch_size, 1])
                     else:
                         dropped_inputs = structured_inputs
                     # state is:           batch_size x 2 * size * num_layers
                     # dropped_inputs is:  batch_size x size
                     # concat is:          batch_size x size * (1 + (2 * num_layers))
                     concat = tf.concat(1, [state, dropped_inputs])
+                    nocond_concat = tf.concat(1, [state, tf.zeros_like(dropped_inputs)])
                     gate_w = tf.get_variable("struct_gate_w",
                                              [config.hidden_size * (1 + (2 * config.num_layers)),
                                               config.hidden_size],
@@ -131,10 +131,12 @@ class LMModel(object):
                     gate_b = tf.get_variable("struct_gate_b", [config.hidden_size],
                                              initializer=tf.ones_initializer)
                     gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(concat, gate_w), gate_b))
-                    outputs.append(cell_output + (gate * structured_inputs))
+                    nocond_gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(nocond_concat, gate_w),
+                                                            gate_b))
+                    outputs.append(((1 - gate) * cell_output) + (gate * structured_inputs))
+                    nocond_outputs.append((1 - nocond_gate) * cell_output)
                 else:
                     outputs.append(cell_output)
-                nocond_outputs.append(cell_output)
         return outputs, state, nocond_outputs
 
 
