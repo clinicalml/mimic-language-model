@@ -20,7 +20,7 @@ flags.DEFINE_integer("batch_size",         25,    "Batch size")
 flags.DEFINE_integer("print_every",        500,   "Print every these many steps")
 flags.DEFINE_integer("inspect_every",      -1,    "Inspect a batch every these many batches " \
                                                   "during testing, -1 to disable")
-flags.DEFINE_integer("save_every",         25000, "Save every these many steps")
+flags.DEFINE_integer("save_every",         10000, "Save every these many steps")
 flags.DEFINE_bool   ("pretrained_emb",     True,  "Use pretrained embeddings")
 flags.DEFINE_bool   ("conditional",        True,  "Use a conditional language model")
 flags.DEFINE_bool   ("training",           True,  "Training mode, turn off for testing")
