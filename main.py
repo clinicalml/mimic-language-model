@@ -16,6 +16,7 @@
 from __future__ import division
 
 import time
+import sys
 
 import numpy as np
 import tensorflow as tf
@@ -28,9 +29,7 @@ import utils
 class LMModel(object):
     """The language model."""
 
-    def __init__(self, is_training, config):
-        self.is_training = is_training
-
+    def __init__(self, config):
         batch_size = config.batch_size
         num_steps = config.num_steps
 
@@ -48,7 +47,7 @@ class LMModel(object):
 
     def rnn_cell(self, config):
         lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(config.hidden_size)
-        if self.is_training and config.keep_prob < 1:
+        if config.training and config.keep_prob < 1:
             lstm_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, output_keep_prob=config.keep_prob)
         return tf.nn.rnn_cell.MultiRNNCell([lstm_cell] * config.num_layers)
 
@@ -63,7 +62,7 @@ class LMModel(object):
                                          name="pre_embedding")
                 embedding = tf.concat(1, [embedding, cembedding])
             inputs = tf.nn.embedding_lookup(embedding, self.input_data)
-        if self.is_training and config.keep_prob < 1:
+        if config.training and config.keep_prob < 1:
             inputs = tf.nn.dropout(inputs, config.keep_prob)
         return inputs
 
@@ -117,7 +116,7 @@ class LMModel(object):
                 if time_step > 0: tf.get_variable_scope().reuse_variables()
                 (cell_output, state) = cell(inputs[:, time_step, :], state)
                 if config.conditional:
-                    if self.is_training and config.keep_prob < 1:
+                    if config.training and config.keep_prob < 1:
                         dropped_inputs = tf.nn.dropout(structured_inputs, config.keep_prob)
                     else:
                         dropped_inputs = structured_inputs
@@ -171,7 +170,7 @@ class LMModel(object):
                                                              config)
         self.loss, self.nocond_loss = self.softmax_loss(outputs, nocond_outputs, config)
         self.cost = tf.reduce_sum(self.loss) / config.batch_size
-        if self.is_training:
+        if config.training:
             self.train_op = self.train(config)
         else:
             self.train_op = tf.no_op()
@@ -201,26 +200,10 @@ def run_epoch(session, m, config, vocab, saver, verbose=False):
     inspect = False
     for step, (x, y, mask, aux, aux_len, new_batch) in enumerate(reader.mimic_iterator(config,
                                                                                        vocab)):
-        if config.conditional and new_batch:
+        if not config.training and config.conditional and new_batch:
             batches += 1
             if inspect:
-                X = np.concatenate(xs, 1)
-                M = np.concatenate([np.ones([config.batch_size, 1])] + ms, 1)
-                diffs = np.concatenate([np.zeros([config.batch_size, 1])] + differences, 1)
-                for i in range(config.batch_size):
-                    print
-                    for j in range(len(X[i])):
-                        if not M[i,j]: break
-                        utils.print_color(vocab.vocab_list[X[i,j]].ljust(len("%.2f" % diffs[i,j])),
-                                          utils.inspection_decide_color(diffs[i,j]))
-                    print
-                    for j in range(len(X[i])):
-                        if not M[i,j]: break
-                        utils.print_color(
-                                        ("%.2f" % diffs[i,j]).ljust(len(vocab.vocab_list[X[i,j]])),
-                                          utils.inspection_decide_color(diffs[i,j]))
-                    print
-                print
+                utils.inspect_conditional_utility(xs, ms, differences, config, vocab)
             if batches % config.inspect_every == 0:
                 inspect = True
                 xs = []
@@ -263,7 +246,7 @@ def run_epoch(session, m, config, vocab, saver, verbose=False):
             shortterm_costs = 0.0
             shortterm_iters = 0
             start_time = time.time()
-        if step and step % config.save_every == 0:
+        if config.training and step and step % config.save_every == 0:
             if verbose: print "Saving model ..."
             save_file = saver.save(session, config.save_file)
             if verbose: print "Saved to", save_file
@@ -274,33 +257,45 @@ def run_epoch(session, m, config, vocab, saver, verbose=False):
 def main(_):
     config = Config()
     if config.conditional:
-        print 'Training a conditional language model for MIMIC'
+        if config.training:
+            print 'Training a conditional language model for MIMIC'
+        else:
+            print 'Testing a conditional language model for MIMIC'
     else:
-        print 'Training an unconditional language model for MIMIC'
+        if config.training:
+            print 'Training an unconditional language model for MIMIC'
+        else:
+            print 'Testing an unconditional language model for MIMIC'
     vocab = reader.Vocab(config)
 
     config_proto = tf.ConfigProto()
     config_proto.gpu_options.allow_growth = True
     with tf.Graph().as_default(), tf.Session(config=config_proto) as session:
         with tf.variable_scope("model", reuse=None):
-            m = LMModel(is_training=True, config=config)
+            m = LMModel(config=config)
             m.prepare(config, vocab)
         saver = tf.train.Saver()
         try:
             saver.restore(session, config.load_file)
             print "Model restored from", config.load_file
         except ValueError:
-            tf.initialize_all_variables().run()
-            print "No loadable model file, new model initialized."
+            if config.training:
+                tf.initialize_all_variables().run()
+                print "No loadable model file, new model initialized."
+            else:
+                print "You need to provide a valid model file for testing!"
+                sys.exit(1)
 
         for i in range(config.max_epoch):
-            #lr_decay = config.lr_decay ** max(i - config.max_epoch, 0.0)
-            m.assign_lr(session, config.learning_rate) #* lr_decay)
-
-            print "Epoch: %d Learning rate: %.3f" % (i + 1, session.run(m.lr))
-            train_perplexity = run_epoch(session, m, config, vocab, saver, verbose=True)
-            print "Epoch: %d Train Perplexity: %.3f" % (i + 1,
-                                                        train_perplexity)
+            if config.training:
+                m.assign_lr(session, config.learning_rate) #* lr_decay)
+                print "Epoch: %d Learning rate: %.3f" % (i + 1, session.run(m.lr))
+            perplexity = run_epoch(session, m, config, vocab, saver, verbose=True)
+            if config.training:
+                print "Epoch: %d Train Perplexity: %.3f" % (i + 1, perplexity)
+            else:
+                print "Test Perplexity: %.3f" % (perplexity,)
+                break
 
 
 if __name__ == "__main__":

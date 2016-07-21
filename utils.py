@@ -1,3 +1,6 @@
+import numpy as np
+
+
 class Colors:
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
@@ -23,3 +26,22 @@ def inspection_decide_color(diff):
         return Colors.WARNING
     else:
         return None
+
+
+def inspect_conditional_utility(xs, ms, differences, config, vocab):
+    X = np.concatenate(xs, 1)
+    M = np.concatenate([np.ones([config.batch_size, 1])] + ms, 1)
+    diffs = np.concatenate([np.zeros([config.batch_size, 1])] + differences, 1)
+    for i in range(config.batch_size):
+        print
+        for j in range(len(X[i])):
+            if not M[i,j]: break
+            print_color(vocab.vocab_list[X[i,j]].ljust(len("%.2f" % diffs[i,j])),
+                        inspection_decide_color(diffs[i,j]))
+        print
+        for j in range(len(X[i])):
+            if not M[i,j]: break
+            print_color(("%.2f" % diffs[i,j]).ljust(len(vocab.vocab_list[X[i,j]])),
+                        inspection_decide_color(diffs[i,j]))
+        print
+    print

@@ -51,8 +51,12 @@ class Vocab(object):
 
 
 def mimic_iterator(config, vocab):
-    splits = range(100)
-    random.shuffle(splits)
+    if config.training:
+        splits = config.training_splits
+        random.shuffle(splits)
+    else:
+        splits = config.testing_splits
+
     for split in splits:
         notes_file = pjoin(config.data_path, 'notes_%02d.pk' % (split,))
         if os.path.isfile(notes_file):
