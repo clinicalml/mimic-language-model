@@ -11,7 +11,7 @@ flags.DEFINE_float  ("max_grad_norm",      5,     "Gradient clipping")
 flags.DEFINE_integer("num_layers",         2,     "Number of LSTM layers")
 flags.DEFINE_integer("num_steps",          20,    "Number of steps to unroll or RNNs")
 flags.DEFINE_integer("context_size",       5,     "Context size for feedforward nets")
-flags.DEFINE_integer("hidden_size",        650,   "LSTM state size")
+flags.DEFINE_integer("hidden_size",        650,   "Hidden state size")
 flags.DEFINE_integer("learn_wordemb_size", 150,   "Number of learnable dimensions in word " \
                                                   "embeddings")
 flags.DEFINE_integer("max_epoch",          6,     "Maximum number of epochs to run for")

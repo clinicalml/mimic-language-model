@@ -101,15 +101,19 @@ class LMModel(object):
                       tf.reshape(tf.maximum(self.aux_data_len[feat], 1),
                                             [config.batch_size, 1]) # mean
             emb_list.append(reduced)
-        transform_w = tf.get_variable("struct_transform_w", [emb_size, config.hidden_size],
-                                      initializer=tf.contrib.layers.xavier_initializer())
-        return tf.matmul(sum(emb_list), transform_w)
+        return sum(emb_list)
 
 
     def rnn(self, inputs, structured_inputs, cell, config):
         outputs = []
         nocond_outputs = [] # to verify if conditioning is helping, and if so, where
         state = self.initial_state
+        if config.conditional:
+            emb_size = max(config.mimic_embeddings.values())
+            transform_w = tf.get_variable("struct_transform_w", [emb_size, config.hidden_size],
+                                          initializer=tf.contrib.layers.xavier_initializer())
+            structured_inputs = tf.matmul(structured_inputs, transform_w)
+
         with tf.variable_scope("RNN"):
             for time_step in range(config.num_steps):
                 if time_step > 0: tf.get_variable_scope().reuse_variables()
@@ -141,7 +145,7 @@ class LMModel(object):
         return outputs, state, nocond_outputs
 
 
-    def softmax_loss(self, outputs, nocond_outputs, config):
+    def rnn_loss(self, outputs, nocond_outputs, config):
         output = tf.reshape(tf.concat(1, outputs), [-1, config.hidden_size])
         if config.conditional:
             nocond_output = tf.reshape(tf.concat(1, nocond_outputs), [-1, config.hidden_size])
@@ -166,8 +170,9 @@ class LMModel(object):
 
 
     def prepare(self, config, vocab):
-        cell = self.rnn_cell(config)
-        self.initial_state = cell.zero_state(config.batch_size, tf.float32)
+        if config.recurrent:
+            cell = self.rnn_cell(config)
+            self.initial_state = cell.zero_state(config.batch_size, tf.float32)
 
         inputs = self.word_embeddings(config, vocab)
         if config.training and config.keep_prob < 1:
@@ -177,9 +182,13 @@ class LMModel(object):
         if config.conditional:
             structured_inputs = self.struct_embeddings(config, vocab)
 
-        outputs, self.final_state, nocond_outputs = self.rnn(inputs, structured_inputs, cell,
-                                                             config)
-        self.loss, self.nocond_loss = self.softmax_loss(outputs, nocond_outputs, config)
+        if config.recurrent:
+            outputs, self.final_state, nocond_outputs = self.rnn(inputs, structured_inputs, cell,
+                                                                 config)
+            self.loss, self.nocond_loss = self.rnn_loss(outputs, nocond_outputs, config)
+        else:
+            pass # TODO
+
         self.cost = tf.reduce_sum(self.loss) / config.batch_size
         if config.training:
             self.train_op = self.train(config)
@@ -227,10 +236,10 @@ def run_epoch(session, m, config, vocab, saver, verbose=False):
         f_dict = {m.input_data: x, m.targets: y}
         if config.recurrent:
             f_dict[m.mask] = mask
-        if new_batch:
-            f_dict[m.initial_state] = zero_state
-        else:
-            f_dict[m.initial_state] = state
+            if new_batch:
+                f_dict[m.initial_state] = zero_state
+            else:
+                f_dict[m.initial_state] = state
         if config.conditional:
             for feat, vals in aux.items():
                 f_dict[m.aux_data[feat]] = vals
@@ -243,8 +252,10 @@ def run_epoch(session, m, config, vocab, saver, verbose=False):
             xs.append(x)
             ms.append(mask)
             differences.append(difference)
-        else:
+        elif config.recurrent:
             cost, state, _ = session.run([m.cost, m.final_state, m.train_op], f_dict)
+        else:
+            cost, _ = session.run([m.cost, m.train_op], f_dict)
 
         costs += cost
         iters += config.num_steps
