@@ -32,8 +32,8 @@ class Config(object):
     var_len_features = set(['diagnoses', 'procedures', 'labs', 'prescriptions'])
     mimic_embeddings = {'gender': 1, 'has_dod': 1, 'has_icu_stay': 1, 'admission_type': 3,
                         'diagnoses': 50, 'procedures': 50, 'labs': 50, 'prescriptions': 50}
-    testing_splits = range(2)
-    training_splits = range(2,100)
+    testing_splits = range(1)
+    training_splits = range(1,100)
 
 
     def __init__(self):

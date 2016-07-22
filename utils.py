@@ -1,3 +1,5 @@
+import itertools
+
 import numpy as np
 
 
@@ -15,6 +17,11 @@ def print_color(s, color=None):
         print color + str(s) + Colors.ENDC,
     else:
         print s,
+
+
+def grouper(n, iterable, fillvalue=None):
+    args = [iter(iterable)] * n
+    return itertools.izip_longest(*args, fillvalue=fillvalue)
 
 
 def inspection_decide_color(diff):

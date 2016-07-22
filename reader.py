@@ -12,6 +12,8 @@ import numpy as np
 import tensorflow as tf
 import nltk
 
+import utils
+
 
 class Vocab(object):
     def __init__(self, config):
@@ -53,9 +55,9 @@ class Vocab(object):
 def mimic_iterator(config, vocab):
     if config.training:
         splits = config.training_splits
-        random.shuffle(splits)
     else:
         splits = config.testing_splits
+    random.shuffle(splits)
 
     for split in splits:
         notes_file = pjoin(config.data_path, 'notes_%02d.pk' % (split,))
@@ -79,8 +81,25 @@ def mimic_iterator(config, vocab):
                                 raw_aux_data[feat].append(values[feat])
             print 'Loaded data split', split
 
-            notes_count = len(raw_data)
-            batch_len = ((notes_count - 1) // config.batch_size) + 1
+            batch_len = ((len(raw_data) - 1) // config.batch_size) + 1
+            pad_count = (batch_len * config.batch_size) - len(raw_data)
+            indices = range(batch_len)
+            random.shuffle(indices)
+
+            raw_data = [[] for _ in range(pad_count)] + raw_data
+            grouped_raw_data = [group for group in utils.grouper(config.batch_size, raw_data)]
+            grouped_raw_data = [grouped_raw_data[i] for i in indices]
+            raw_data = [note for group in grouped_raw_data for note in group]
+            if config.conditional:
+                for k, v in raw_aux_data.items():
+                    if k in config.fixed_len_features:
+                        v = [0 for _ in range(pad_count)] + v
+                    else:
+                        v = [[] for _ in range(pad_count)] + v
+                    ls = [group for group in utils.grouper(config.batch_size, v)]
+                    ls = [ls[i] for i in indices]
+                    raw_aux_data[k] = [data for group in ls for data in group]
+
             for batch in xrange(batch_len):
                 batch_data = raw_data[config.batch_size * batch : config.batch_size * (batch + 1)]
                 if config.conditional:
