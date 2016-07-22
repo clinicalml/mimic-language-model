@@ -62,8 +62,6 @@ class LMModel(object):
                                          name="pre_embedding")
                 embedding = tf.concat(1, [embedding, cembedding])
             inputs = tf.nn.embedding_lookup(embedding, self.input_data)
-        if config.training and config.keep_prob < 1:
-            inputs = tf.nn.dropout(inputs, config.keep_prob)
         return inputs
 
 
@@ -85,9 +83,8 @@ class LMModel(object):
                     padzero = tf.constant(padzero, dtype=tf.float32)
                     embedding = embedding * padzero # force 0 to have zero embedding
                 val_embedding = tf.nn.embedding_lookup(embedding, self.aux_data[feat])
-                if config.mimic_embeddings[feat] < emb_size:
-                    val_embedding = tf.reshape(val_embedding, [-1,
-                                                               config.mimic_embeddings[feat]])
+            if config.mimic_embeddings[feat] < emb_size:
+                val_embedding = tf.reshape(val_embedding, [-1, config.mimic_embeddings[feat]])
             if config.mimic_embeddings[feat] < emb_size:
                 transform_w = tf.get_variable("emb_transform_"+feat,
                                               [config.mimic_embeddings[feat], emb_size],
@@ -169,11 +166,14 @@ class LMModel(object):
         self.initial_state = cell.zero_state(config.batch_size, tf.float32)
 
         inputs = self.word_embeddings(config, vocab)
+        if config.training and config.keep_prob < 1:
+            inputs = tf.nn.dropout(inputs, config.keep_prob)
+
         structured_inputs = None
         if config.conditional:
             structured_inputs = self.struct_embeddings(config, vocab)
 
-        outputs ,self.final_state, nocond_outputs = self.rnn(inputs, structured_inputs, cell,
+        outputs, self.final_state, nocond_outputs = self.rnn(inputs, structured_inputs, cell,
                                                              config)
         self.loss, self.nocond_loss = self.softmax_loss(outputs, nocond_outputs, config)
         self.cost = tf.reduce_sum(self.loss) / config.batch_size
