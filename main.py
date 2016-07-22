@@ -34,8 +34,12 @@ class LMModel(object):
         num_steps = config.num_steps
 
         self.input_data = tf.placeholder(tf.int32, [batch_size, num_steps])
-        self.targets = tf.placeholder(tf.int32, [batch_size, num_steps])
-        self.mask = tf.placeholder(tf.float32, [batch_size, num_steps])
+        if config.recurrent:
+            self.targets = tf.placeholder(tf.int32, [batch_size, num_steps])
+            self.mask = tf.placeholder(tf.float32, [batch_size, num_steps])
+        else:
+            self.targets = tf.placeholder(tf.int32, [batch_size])
+
         if config.conditional:
             self.aux_data = {}
             self.aux_data_len = {}
@@ -207,7 +211,8 @@ def run_epoch(session, m, config, vocab, saver, verbose=False):
     inspect = False
     for step, (x, y, mask, aux, aux_len, new_batch) in enumerate(reader.mimic_iterator(config,
                                                                                        vocab)):
-        if new_batch and not config.training and config.conditional and config.inspect_every > 0:
+        if new_batch and not config.training and config.recurrent and config.conditional and \
+                                                                      config.inspect_every > 0:
             batches += 1
             if inspect:
                 utils.inspect_conditional_utility(xs, ms, differences, config, vocab)
@@ -219,9 +224,9 @@ def run_epoch(session, m, config, vocab, saver, verbose=False):
             else:
                 inspect = False
 
-        f_dict = {m.input_data: x,
-                  m.targets: y,
-                  m.mask: mask}
+        f_dict = {m.input_data: x, m.targets: y}
+        if config.recurrent:
+            f_dict[m.mask] = mask
         if new_batch:
             f_dict[m.initial_state] = zero_state
         else:

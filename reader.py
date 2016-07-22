@@ -107,15 +107,24 @@ def mimic_iterator(config, vocab):
                     for (feat, vals) in raw_aux_data.items():
                         batch_aux_data[feat] = vals[config.batch_size * batch : \
                                                     config.batch_size * (batch + 1)]
-                max_note_len = max(len(note) for note in batch_data)
-                epoch_size = ((max_note_len - 2) // config.num_steps) + 1
+                if config.recurrent:
+                    max_note_len = max(len(note) for note in batch_data)
+                    epoch_size = ((max_note_len - 2) // config.num_steps) + 1
+                else:
+                    min_note_len = min(len(note) for note in batch_data)
+                    epoch_size = (min_note_len - 1) // config.num_steps
                 data = np.zeros([config.batch_size, epoch_size * config.num_steps + 1],
                                 dtype=np.int32)
-                mask = np.zeros([config.batch_size, epoch_size * config.num_steps + 1],
-                                dtype=np.float32)
+                if config.recurrent:
+                    mask = np.zeros([config.batch_size, epoch_size * config.num_steps + 1],
+                                    dtype=np.float32)
                 for i, iter_data in enumerate(batch_data):
-                    data[i, 0:len(iter_data)] = iter_data
-                    mask[i, 0:len(iter_data)] = 1.0
+                    if config.recurrent:
+                        data[i, 0:len(iter_data)] = iter_data
+                        mask[i, 0:len(iter_data)] = 1.0
+                    else:
+                        span = min(len(iter_data), epoch_size * config.num_steps + 1)
+                        data[i, 0:span] = iter_data[:span]
                 aux_data = {}
                 aux_data_len = {}
                 if config.conditional:
@@ -138,7 +147,11 @@ def mimic_iterator(config, vocab):
                 new_batch = True
                 for i in xrange(epoch_size):
                     x = data[:, i*config.num_steps:(i+1)*config.num_steps]
-                    y = data[:, i*config.num_steps+1:(i+1)*config.num_steps+1]
-                    m = mask[:, i*config.num_steps+1:(i+1)*config.num_steps+1]
+                    if config.recurrent:
+                        y = data[:, i*config.num_steps+1:(i+1)*config.num_steps+1]
+                        m = mask[:, i*config.num_steps+1:(i+1)*config.num_steps+1]
+                    else:
+                        y = data[:, (i+1)*config.num_steps]
+                        m = None
                     yield (x, y, m, aux_data, aux_data_len, new_batch)
                     new_batch = False

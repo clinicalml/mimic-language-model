@@ -9,7 +9,8 @@ flags.DEFINE_string ("load_file",          "",          "File to load model from
 flags.DEFINE_float  ("learning_rate",      1e-3,  "ADAM learning rate")
 flags.DEFINE_float  ("max_grad_norm",      5,     "Gradient clipping")
 flags.DEFINE_integer("num_layers",         2,     "Number of LSTM layers")
-flags.DEFINE_integer("num_steps",          20,    "Number of steps to unroll")
+flags.DEFINE_integer("num_steps",          20,    "Number of steps to unroll or RNNs")
+flags.DEFINE_integer("context_size",       5,     "Context size for feedforward nets")
 flags.DEFINE_integer("hidden_size",        650,   "LSTM state size")
 flags.DEFINE_integer("learn_wordemb_size", 150,   "Number of learnable dimensions in word " \
                                                   "embeddings")
@@ -24,6 +25,7 @@ flags.DEFINE_integer("save_every",         10000, "Save every these many steps")
 flags.DEFINE_bool   ("pretrained_emb",     True,  "Use pretrained embeddings")
 flags.DEFINE_bool   ("conditional",        True,  "Use a conditional language model")
 flags.DEFINE_bool   ("training",           True,  "Training mode, turn off for testing")
+flags.DEFINE_bool   ("recurrent",          False, "Use a recurrent language model")
 
 
 class Config(object):
@@ -39,3 +41,6 @@ class Config(object):
     def __init__(self):
         for k, v in flags.FLAGS.__dict__['__flags'].items():
             setattr(self, k, v)
+
+        if not self.recurrent:
+            self.num_steps = self.context_size # reuse the num_steps config for FF
