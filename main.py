@@ -108,18 +108,18 @@ class LMModel(object):
         outputs = []
         nocond_outputs = [] # to verify if conditioning is helping, and if so, where
         state = self.initial_state
-        if config.conditional:
-            emb_size = max(config.mimic_embeddings.values())
-            transform_w = tf.get_variable("struct_transform_w", [emb_size, config.hidden_size],
-                                          initializer=tf.contrib.layers.xavier_initializer())
-            structured_inputs = tf.matmul(structured_inputs, transform_w)
-
         with tf.variable_scope("RNN"):
+            if config.conditional:
+                emb_size = max(config.mimic_embeddings.values())
+                transform_w = tf.get_variable("struct_transform_w", [emb_size, config.hidden_size],
+                                              initializer=tf.contrib.layers.xavier_initializer())
+                structured_inputs = tf.matmul(structured_inputs, transform_w)
+
             for time_step in range(config.num_steps):
                 if time_step > 0: tf.get_variable_scope().reuse_variables()
                 (cell_output, state) = cell(inputs[:, time_step, :], state)
                 if config.conditional:
-                    if config.training and config.keep_prob < 1:
+                    if config.training and config.struct_keep_prob < 1:
                         dropped_inputs = tf.nn.dropout(structured_inputs, config.struct_keep_prob,
                                                        noise_shape=[config.batch_size, 1])
                     else:
@@ -169,14 +169,64 @@ class LMModel(object):
             return tf.reshape(loss, [config.batch_size, config.num_steps]), None
 
 
+    def ff(self, inputs, structured_inputs, config):
+        word_emb_size = inputs.get_shape()[2]
+        with tf.variable_scope("FF"):
+            words = []
+            for i in range(config.num_steps):
+                wordi = tf.squeeze(tf.slice(inputs, [0,i,0], [-1,1,-1]), [1])
+                transform_w = tf.get_variable("word_transform_w"+str(i),
+                                              [word_emb_size, config.hidden_size],
+                                              initializer=tf.contrib.layers.xavier_initializer())
+                transform_b = tf.get_variable("word_transform_b"+str(i), [config.hidden_size],
+                                              initializer=tf.ones_initializer)
+                wordi = tf.nn.bias_add(tf.matmul(wordi, transform_w), transform_b)
+                words.append(wordi)
+            context = sum(words)
+            if config.training and config.keep_prob < 1:
+                context = tf.nn.dropout(context, config.keep_prob)
+
+            if config.conditional:
+                emb_size = max(config.mimic_embeddings.values())
+                transform_w = tf.get_variable("struct_transform_w", [emb_size, config.hidden_size],
+                                              initializer=tf.contrib.layers.xavier_initializer())
+                transform_b = tf.get_variable("struct_transform_b", [config.hidden_size],
+                                              initializer=tf.ones_initializer)
+                structured_inputs = tf.nn.bias_add(tf.matmul(structured_inputs, transform_w),
+                                                   transform_b)
+                if config.training and config.struct_keep_prob < 1:
+                    structured_inputs = tf.nn.dropout(structured_inputs, config.struct_keep_prob,
+                                                      noise_shape=[config.batch_size, 1])
+
+                concat = tf.concat(1, [context, structured_inputs])
+                gate_w = tf.get_variable("struct_gate_w",
+                                         [config.hidden_size * 2, config.hidden_size],
+                                         initializer=tf.contrib.layers.xavier_initializer())
+                gate_b = tf.get_variable("struct_gate_b", [config.hidden_size],
+                                         initializer=tf.ones_initializer)
+                gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(concat, gate_w), gate_b))
+                context = ((1 - gate) * context) + (gate * structured_inputs)
+
+        return tf.nn.relu(context)
+
+
+    def ff_loss(self, output, config):
+        softmax_w = tf.get_variable("softmax_w", [config.hidden_size, config.vocab_size],
+                                    initializer=tf.contrib.layers.xavier_initializer())
+        softmax_b = tf.get_variable("softmax_b", [config.vocab_size],
+                                    initializer=tf.ones_initializer)
+        logits = tf.nn.bias_add(tf.matmul(output, softmax_w), softmax_b)
+        return tf.nn.sparse_softmax_cross_entropy_with_logits(logits, self.targets)
+
+
     def prepare(self, config, vocab):
         if config.recurrent:
             cell = self.rnn_cell(config)
             self.initial_state = cell.zero_state(config.batch_size, tf.float32)
 
         inputs = self.word_embeddings(config, vocab)
-        if config.training and config.keep_prob < 1:
-            inputs = tf.nn.dropout(inputs, config.keep_prob)
+        #if config.training and config.keep_prob < 1:
+        #    inputs = tf.nn.dropout(inputs, config.keep_prob)
 
         structured_inputs = None
         if config.conditional:
@@ -187,7 +237,8 @@ class LMModel(object):
                                                                  config)
             self.loss, self.nocond_loss = self.rnn_loss(outputs, nocond_outputs, config)
         else:
-            pass # TODO
+            output = self.ff(inputs, structured_inputs, config)
+            self.loss = self.ff_loss(output, config)
 
         self.cost = tf.reduce_sum(self.loss) / config.batch_size
         if config.training:
@@ -215,9 +266,10 @@ def run_epoch(session, m, config, vocab, saver, verbose=False):
     iters = 0
     shortterm_costs = 0.0
     shortterm_iters = 0
-    zero_state = m.initial_state.eval()
     batches = 0
     inspect = False
+    if config.recurrent:
+        zero_state = m.initial_state.eval()
     for step, (x, y, mask, aux, aux_len, new_batch) in enumerate(reader.mimic_iterator(config,
                                                                                        vocab)):
         if new_batch and not config.training and config.recurrent and config.conditional and \
