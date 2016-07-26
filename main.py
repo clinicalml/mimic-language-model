@@ -312,7 +312,10 @@ def run_epoch(session, m, config, vocab, saver, verbose=False):
         costs += cost
         iters += config.num_steps
         shortterm_costs += cost
-        shortterm_iters += config.num_steps
+        if config.recurrent:
+            shortterm_iters += config.num_steps
+        else:
+            shortterm_iters += 1
 
         if verbose and step % config.print_every == 0:
             print("%d  perplexity: %.3f speed: %.0f wps" %
