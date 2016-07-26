@@ -89,7 +89,6 @@ class LMModel(object):
                 val_embedding = tf.nn.embedding_lookup(embedding, self.aux_data[feat])
             if config.mimic_embeddings[feat] < emb_size:
                 val_embedding = tf.reshape(val_embedding, [-1, config.mimic_embeddings[feat]])
-            if config.mimic_embeddings[feat] < emb_size:
                 transform_w = tf.get_variable("emb_transform_"+feat,
                                               [config.mimic_embeddings[feat], emb_size],
                                               initializer=tf.contrib.layers.xavier_initializer())
@@ -182,7 +181,13 @@ class LMModel(object):
                                               initializer=tf.ones_initializer)
                 wordi = tf.nn.bias_add(tf.matmul(wordi, transform_w), transform_b)
                 words.append(wordi)
-            context = sum(words)
+            context = tf.nn.relu(sum(words))
+            context_transform_w = tf.get_variable("context_transform_w", [config.hidden_size,
+                                                                          config.hidden_size],
+                                         initializer=tf.contrib.layers.xavier_initializer())
+            context_transform_b = tf.get_variable("context_transform_b", [config.hidden_size],
+                                         initializer=tf.ones_initializer)
+            context = tf.nn.bias_add(tf.matmul(context, context_transform_w), context_transform_b)
             if config.training and config.keep_prob < 1:
                 context = tf.nn.dropout(context, config.keep_prob)
 
@@ -206,6 +211,12 @@ class LMModel(object):
                                          initializer=tf.ones_initializer)
                 gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(concat, gate_w), gate_b))
                 context = ((1 - gate) * context) + (gate * structured_inputs)
+
+            postgate_w = tf.get_variable("postgate_w", [config.hidden_size, config.hidden_size],
+                                         initializer=tf.contrib.layers.xavier_initializer())
+            postgate_b = tf.get_variable("postgate_b", [config.hidden_size],
+                                         initializer=tf.ones_initializer)
+            context = tf.nn.bias_add(tf.matmul(context, postgate_w), postgate_b)
 
         return tf.nn.relu(context)
 
