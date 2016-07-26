@@ -1,5 +1,6 @@
 # Application-specific
 data
+models
 *.dat
 
 # Tensorflow

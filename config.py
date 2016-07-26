@@ -3,9 +3,9 @@ import tensorflow as tf
 flags = tf.flags
 
 # command-line config
-flags.DEFINE_string ("data_path",          "data",      "Data path")
-flags.DEFINE_string ("save_file",          "model.dat", "Save file")
-flags.DEFINE_string ("load_file",          "",          "File to load model from")
+flags.DEFINE_string ("data_path",          "data",              "Data path")
+flags.DEFINE_string ("save_file",          "models/recent.dat", "Save file")
+flags.DEFINE_string ("load_file",          "",                  "File to load model from")
 flags.DEFINE_float  ("learning_rate",      1e-3,  "ADAM learning rate")
 flags.DEFINE_float  ("max_grad_norm",      5,     "Gradient clipping")
 flags.DEFINE_integer("num_layers",         2,     "Number of LSTM layers")
