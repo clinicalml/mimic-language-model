@@ -87,20 +87,24 @@ class LMModel(object):
                     padzero = tf.constant(padzero, dtype=tf.float32)
                     embedding = embedding * padzero # force 0 to have zero embedding
                 val_embedding = tf.nn.embedding_lookup(embedding, self.aux_data[feat])
-            if config.mimic_embeddings[feat] < emb_size:
-                val_embedding = tf.reshape(val_embedding, [-1, config.mimic_embeddings[feat]])
-                transform_w = tf.get_variable("emb_transform_"+feat,
-                                              [config.mimic_embeddings[feat], emb_size],
-                                              initializer=tf.contrib.layers.xavier_initializer())
-                transformed = tf.matmul(val_embedding, transform_w)
-                reshaped = tf.reshape(transformed, tf.pack([config.batch_size, -1, emb_size]))
-            else:
-                reshaped = val_embedding
-            reduced = tf.reduce_sum(reshaped, 1) / \
-                      tf.reshape(tf.maximum(self.aux_data_len[feat], 1),
-                                            [config.batch_size, 1]) # mean
-            emb_list.append(reduced)
-        return sum(emb_list)
+                if feat in config.var_len_features:
+                    val_embedding = tf.reshape(val_embedding, [config.batch_size, -1,
+                                                               config.mimic_embeddings[feat]])
+                    reduced = tf.reduce_sum(val_embedding, 1) / \
+                              tf.reshape(tf.maximum(self.aux_data_len[feat], 1),
+                                                    [config.batch_size, 1]) # mean
+                    reduced = tf.nn.relu(reduced)
+                else:
+                    reduced = val_embedding
+            emb = tf.reshape(reduced, [-1, config.mimic_embeddings[feat]])
+            transform_w = tf.get_variable("emb_transform_"+feat,
+                                          [config.mimic_embeddings[feat], emb_size],
+                                          initializer=tf.contrib.layers.xavier_initializer())
+            transformed = tf.matmul(emb, transform_w)
+            reshaped = tf.reshape(transformed, [config.batch_size, emb_size])
+            emb_list.append(reshaped)
+
+        return tf.nn.relu(sum(emb_list))
 
 
     def rnn(self, inputs, structured_inputs, cell, config):
