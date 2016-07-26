@@ -88,14 +88,20 @@ class LMModel(object):
                     embedding = embedding * padzero # force 0 to have zero embedding
                 val_embedding = tf.nn.embedding_lookup(embedding, self.aux_data[feat])
                 if feat in config.var_len_features:
-                    val_embedding = tf.reshape(val_embedding, [config.batch_size, -1,
-                                                               config.mimic_embeddings[feat]])
+                    if config.training and config.struct_keep_prob < 1:
+                        # drop random structured info items entirely
+                        val_embedding = tf.nn.dropout(val_embedding, config.struct_keep_prob,
+                                                      noise_shape=tf.pack([config.batch_size,
+                                                                   tf.shape(val_embedding)[1], 1]))
                     reduced = tf.reduce_sum(val_embedding, 1) / \
                               tf.reshape(tf.maximum(self.aux_data_len[feat], 1),
                                                     [config.batch_size, 1]) # mean
                     reduced = tf.nn.relu(reduced)
                 else:
                     reduced = val_embedding
+                    if config.training and config.struct_keep_prob < 1:
+                        reduced = tf.nn.dropout(reduced, config.struct_keep_prob,
+                                                noise_shape=[config.batch_size, 1, 1])
             emb = tf.reshape(reduced, [-1, config.mimic_embeddings[feat]])
             transform_w = tf.get_variable("emb_transform_"+feat,
                                           [config.mimic_embeddings[feat], emb_size],
@@ -203,9 +209,8 @@ class LMModel(object):
                                               initializer=tf.ones_initializer)
                 structured_inputs = tf.nn.bias_add(tf.matmul(structured_inputs, transform_w),
                                                    transform_b)
-                if config.training and config.struct_keep_prob < 1:
-                    structured_inputs = tf.nn.dropout(structured_inputs, config.struct_keep_prob,
-                                                      noise_shape=[config.batch_size, 1])
+                if config.training and config.keep_prob < 1:
+                    structured_inputs = tf.nn.dropout(structured_inputs, config.keep_prob)
 
                 concat = tf.concat(1, [context, structured_inputs])
                 gate_w = tf.get_variable("struct_gate_w",
