@@ -73,6 +73,7 @@ class LMModel(object):
         emb_size = max(config.mimic_embeddings.values())
         emb_list = []
         for i, (feat, dims) in enumerate(config.mimic_embeddings.items()):
+            if dims <= 0: continue
             try:
                 vocab_aux = len(vocab.aux_list[feat])
             except KeyError:
