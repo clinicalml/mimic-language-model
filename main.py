@@ -246,8 +246,8 @@ class LMModel(object):
             self.initial_state = cell.zero_state(config.batch_size, tf.float32)
 
         inputs = self.word_embeddings(config, vocab)
-        #if config.training and config.keep_prob < 1:
-        #    inputs = tf.nn.dropout(inputs, config.keep_prob)
+        if config.training and config.keep_prob < 1:
+            inputs = tf.nn.dropout(inputs, config.keep_prob)
 
         structured_inputs = None
         if config.conditional:
