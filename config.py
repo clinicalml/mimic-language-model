@@ -28,13 +28,22 @@ flags.DEFINE_bool   ("conditional",        True,    "Use a conditional language 
 flags.DEFINE_bool   ("training",           True,    "Training mode, turn off for testing")
 flags.DEFINE_bool   ("recurrent",          False,   "Use a recurrent language model")
 
+flags.DEFINE_integer("dims_gender",         1,  "Dimensionality for gender")
+flags.DEFINE_integer("dims_has_dod",        1,  "Dimensionality for has_dod")
+flags.DEFINE_integer("dims_has_icu_stay",   1,  "Dimensionality for has_icu_stay")
+flags.DEFINE_integer("dims_admission_type", 3,  "Dimensionality for admission_type")
+flags.DEFINE_integer("dims_diagnoses",      50, "Dimensionality for diagnoses")
+flags.DEFINE_integer("dims_procedures",     50, "Dimensionality for procedures")
+flags.DEFINE_integer("dims_labs",           50, "Dimensionality for labs")
+flags.DEFINE_integer("dims_prescriptions",  50, "Dimensionality for prescriptions")
+
 
 class Config(object):
+    mimic_embeddings = {}
+
     # additional config
     fixed_len_features = set(['gender', 'has_dod', 'has_icu_stay', 'admission_type'])
     var_len_features = set(['diagnoses', 'procedures', 'labs', 'prescriptions'])
-    mimic_embeddings = {'gender': 1, 'has_dod': 1, 'has_icu_stay': 1, 'admission_type': 3,
-                        'diagnoses': 50, 'procedures': 50, 'labs': 50, 'prescriptions': 50}
     testing_splits = range(1)
     training_splits = range(1,100)
 
@@ -42,6 +51,8 @@ class Config(object):
     def __init__(self):
         for k, v in flags.FLAGS.__dict__['__flags'].items():
             setattr(self, k, v)
+            if k.startswith('dims_'):
+                self.mimic_embeddings[k[len('dims_'):]] = v
 
         if not self.recurrent:
             self.num_steps = self.context_size # reuse the num_steps config for FF
