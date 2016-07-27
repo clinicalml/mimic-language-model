@@ -112,7 +112,9 @@ def mimic_iterator(config, vocab):
                     epoch_size = ((max_note_len - 2) // config.num_steps) + 1
                 else:
                     min_note_len = min(len(note) for note in batch_data)
-                    epoch_size = (min_note_len - 1) // config.num_steps
+                    epoch_size = (min_note_len - 1) // config.num_steps # this can become negative!
+                if epoch_size <= 0:
+                    continue
                 data = np.zeros([config.batch_size, epoch_size * config.num_steps + 1],
                                 dtype=np.int32)
                 if config.recurrent:
