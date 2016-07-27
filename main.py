@@ -331,11 +331,12 @@ def run_epoch(session, m, config, vocab, saver, verbose=False):
             cost, _ = session.run([m.cost, m.train_op], f_dict)
 
         costs += cost
-        iters += config.num_steps
         shortterm_costs += cost
         if config.recurrent:
+            iters += config.num_steps
             shortterm_iters += config.num_steps
         else:
+            iters += 1
             shortterm_iters += 1
 
         if verbose and step % config.print_every == 0:
