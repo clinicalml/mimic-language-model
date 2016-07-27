@@ -280,7 +280,7 @@ class LMModel(object):
         return optimizer.apply_gradients(zip(grads, tvars))
 
 
-def run_epoch(session, m, config, vocab, saver, verbose=False):
+def run_epoch(session, m, config, vocab, saver, steps, verbose=False):
     """Runs the model on the given data."""
     start_time = time.time()
     costs = 0.0
@@ -351,7 +351,10 @@ def run_epoch(session, m, config, vocab, saver, verbose=False):
             save_file = saver.save(session, config.save_file)
             if verbose: print "Saved to", save_file
 
-    return np.exp(costs / iters)
+        if steps + iters >= config.max_steps:
+            break
+
+    return np.exp(costs / iters), steps + iters
 
 
 def main(_):
@@ -386,15 +389,18 @@ def main(_):
                 print "You need to provide a valid model file for testing!"
                 sys.exit(1)
 
-        for i in range(config.max_epoch):
+        steps = 0
+        for i in xrange(config.max_epoch):
             if config.training:
                 m.assign_lr(session, config.learning_rate) #* lr_decay)
                 print "Epoch: %d Learning rate: %.3f" % (i + 1, session.run(m.lr))
-            perplexity = run_epoch(session, m, config, vocab, saver, verbose=True)
+            perplexity, steps = run_epoch(session, m, config, vocab, saver, steps, verbose=True)
             if config.training:
                 print "Epoch: %d Train Perplexity: %.3f" % (i + 1, perplexity)
             else:
                 print "Test Perplexity: %.3f" % (perplexity,)
+                break
+            if steps >= config.max_steps:
                 break
 
 
