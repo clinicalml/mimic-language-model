@@ -341,9 +341,16 @@ def run_epoch(session, m, config, vocab, saver, steps, verbose=False):
             shortterm_iters += 1
 
         if verbose and step % config.print_every == 0:
-            print("%d  perplexity: %.3f speed: %.0f wps" %
-                        (step, np.exp(shortterm_costs / shortterm_iters),
-                         shortterm_iters * config.batch_size / (time.time() - start_time)))
+            if config.recurrent:
+                print("%d  perplexity: %.3f speed: %.0f wps" %
+                      (step, np.exp(shortterm_costs / shortterm_iters),
+                       shortterm_iters * config.batch_size / (time.time() - start_time)))
+            else:
+                print("%d  perplexity: %.3f speed: %.0f wps, %.0f pps" %
+                      (step, np.exp(shortterm_costs / shortterm_iters),
+                       shortterm_iters * config.num_steps * config.batch_size / (time.time() - \
+                                                                                 start_time),
+                       shortterm_iters * config.batch_size / (time.time() - start_time)))
             shortterm_costs = 0.0
             shortterm_iters = 0
             start_time = time.time()
