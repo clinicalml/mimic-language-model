@@ -28,14 +28,14 @@ flags.DEFINE_bool   ("conditional",        True,    "Use a conditional language 
 flags.DEFINE_bool   ("training",           True,    "Training mode, turn off for testing")
 flags.DEFINE_bool   ("recurrent",          False,   "Use a recurrent language model")
 
-flags.DEFINE_integer("dims_gender",         1,  "Dimensionality for gender")
-flags.DEFINE_integer("dims_has_dod",        1,  "Dimensionality for has_dod")
-flags.DEFINE_integer("dims_has_icu_stay",   1,  "Dimensionality for has_icu_stay")
-flags.DEFINE_integer("dims_admission_type", 3,  "Dimensionality for admission_type")
-flags.DEFINE_integer("dims_diagnoses",      50, "Dimensionality for diagnoses")
-flags.DEFINE_integer("dims_procedures",     50, "Dimensionality for procedures")
-flags.DEFINE_integer("dims_labs",           50, "Dimensionality for labs")
-flags.DEFINE_integer("dims_prescriptions",  50, "Dimensionality for prescriptions")
+flags.DEFINE_integer("dims_gender",         1,   "Dimensionality for gender")
+flags.DEFINE_integer("dims_has_dod",        1,   "Dimensionality for has_dod")
+flags.DEFINE_integer("dims_has_icu_stay",   1,   "Dimensionality for has_icu_stay")
+flags.DEFINE_integer("dims_admission_type", 4,   "Dimensionality for admission_type")
+flags.DEFINE_integer("dims_diagnoses",      100, "Dimensionality for diagnoses")
+flags.DEFINE_integer("dims_procedures",     100, "Dimensionality for procedures")
+flags.DEFINE_integer("dims_labs",           100, "Dimensionality for labs")
+flags.DEFINE_integer("dims_prescriptions",  100, "Dimensionality for prescriptions")
 
 
 class Config(object):
