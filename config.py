@@ -16,6 +16,7 @@ flags.DEFINE_integer("learn_wordemb_size", 150,     "Number of learnable dimensi
                                                     "embeddings")
 flags.DEFINE_integer("max_steps",          9999999, "Maximum number of steps to run for")
 flags.DEFINE_integer("max_epoch",          6,       "Maximum number of epochs to run for")
+flags.DEFINE_integer("softmax_samples",    1000,    "Number of classes to sample for softmax")
 flags.DEFINE_float  ("keep_prob",          1.0,     "Dropout keep probability")
 flags.DEFINE_float  ("struct_keep_prob",   0.5,     "Structural info dropout keep probability")
 flags.DEFINE_integer("batch_size",         25,      "Batch size")

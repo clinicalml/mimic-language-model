@@ -233,12 +233,17 @@ class LMModel(object):
 
 
     def ff_loss(self, output, config):
-        softmax_w = tf.get_variable("softmax_w", [config.hidden_size, config.vocab_size],
+        softmax_w = tf.get_variable("softmax_w", [config.vocab_size, config.hidden_size],
                                     initializer=tf.contrib.layers.xavier_initializer())
         softmax_b = tf.get_variable("softmax_b", [config.vocab_size],
                                     initializer=tf.ones_initializer)
-        logits = tf.nn.bias_add(tf.matmul(output, softmax_w), softmax_b)
-        return tf.nn.sparse_softmax_cross_entropy_with_logits(logits, self.targets)
+        if config.training and config.softmax_samples < config.vocab_size:
+            targets = tf.expand_dims(self.targets, -1)
+            return tf.nn.sampled_softmax_loss(softmax_w, softmax_b, output, targets,
+                                              config.softmax_samples, config.vocab_size)
+        else:
+            logits = tf.nn.bias_add(tf.matmul(output, tf.transpose(softmax_w)), softmax_b)
+            return tf.nn.sparse_softmax_cross_entropy_with_logits(logits, self.targets)
 
 
     def prepare(self, config, vocab):
