@@ -111,7 +111,7 @@ class LMModel(object):
             reshaped = tf.reshape(transformed, [config.batch_size, emb_size])
             emb_list.append(reshaped)
 
-        return tf.nn.relu(sum(emb_list))
+        return sum(emb_list)
 
 
     def rnn(self, inputs, structured_inputs, cell, config):
@@ -204,6 +204,7 @@ class LMModel(object):
 
             if config.conditional:
                 emb_size = max(config.mimic_embeddings.values())
+                structured_inputs = tf.nn.relu(structured_inputs)
                 transform_w = tf.get_variable("struct_transform_w", [emb_size, config.hidden_size],
                                               initializer=tf.contrib.layers.xavier_initializer())
                 transform_b = tf.get_variable("struct_transform_b", [config.hidden_size],
