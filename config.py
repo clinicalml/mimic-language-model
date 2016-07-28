@@ -9,7 +9,7 @@ flags.DEFINE_string ("load_file",          "",      "File to load model from")
 flags.DEFINE_float  ("learning_rate",      1e-3,    "ADAM learning rate")
 flags.DEFINE_float  ("max_grad_norm",      5,       "Gradient clipping")
 flags.DEFINE_integer("num_layers",         2,       "Number of LSTM layers")
-flags.DEFINE_integer("num_steps",          20,      "Number of steps to unroll or RNNs")
+flags.DEFINE_integer("num_steps",          20,      "Number of steps to unroll for RNNs")
 flags.DEFINE_integer("context_size",       5,       "Context size for feedforward nets")
 flags.DEFINE_integer("hidden_size",        500,     "Hidden state size")
 flags.DEFINE_integer("learn_wordemb_size", 150,     "Number of learnable dimensions in word " \
