@@ -84,7 +84,14 @@ def mimic_iterator(config, vocab):
             batch_len = ((len(raw_data) - 1) // config.batch_size) + 1
             pad_count = (batch_len * config.batch_size) - len(raw_data)
             indices = range(batch_len)
-            random.shuffle(indices)
+            if config.profiled:
+                random.shuffle(indices)
+            else:
+                # make sure the largest length batch is the first batch seen as we profile on the
+                # first batch
+                indices_but1 = indices[:-1]
+                random.shuffle(indices_but1)
+                indices = indices[-1:] + indices_but1
 
             raw_data = [[] for _ in range(pad_count)] + raw_data
             grouped_raw_data = [group for group in utils.grouper(config.batch_size, raw_data)]

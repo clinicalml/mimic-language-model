@@ -25,6 +25,8 @@ from config import Config
 import reader
 import utils
 
+from tensorflow.python.client import timeline
+
 
 class LMModel(object):
     """The language model."""
@@ -33,39 +35,43 @@ class LMModel(object):
         batch_size = config.batch_size
         num_steps = config.num_steps
 
-        self.input_data = tf.placeholder(tf.int32, [batch_size, num_steps])
+        self.input_data = tf.placeholder(tf.int32, [batch_size, num_steps], name='input_data')
         if config.recurrent:
-            self.targets = tf.placeholder(tf.int32, [batch_size, num_steps])
-            self.mask = tf.placeholder(tf.float32, [batch_size, num_steps])
+            self.targets = tf.placeholder(tf.int32, [batch_size, num_steps], name='targets_r')
+            self.mask = tf.placeholder(tf.float32, [batch_size, num_steps], name='mask')
         else:
-            self.targets = tf.placeholder(tf.int32, [batch_size])
+            self.targets = tf.placeholder(tf.int32, [batch_size], name='targets_nr')
 
         if config.conditional:
             self.aux_data = {}
             self.aux_data_len = {}
             for feat, dims in config.mimic_embeddings.items():
                 if dims > 0:
-                    self.aux_data[feat] = tf.placeholder(tf.int32, [batch_size, None])
-                    self.aux_data_len[feat] = tf.placeholder(tf.float32, [batch_size])
+                    self.aux_data[feat] = tf.placeholder(tf.int32, [batch_size, None],
+                                                         name='aux_data.'+feat)
+                    self.aux_data_len[feat] = tf.placeholder(tf.float32, [batch_size],
+                                                             name='aux_data_len.'+feat)
 
 
     def rnn_cell(self, config):
-        lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(config.hidden_size)
+        lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(config.hidden_size, name='lstm_cell')
         if config.training and config.keep_prob < 1:
-            lstm_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, output_keep_prob=config.keep_prob)
-        return tf.nn.rnn_cell.MultiRNNCell([lstm_cell] * config.num_layers)
+            lstm_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, output_keep_prob=config.keep_prob,
+                                                      name='lstm_dropout')
+        return tf.nn.rnn_cell.MultiRNNCell([lstm_cell] * config.num_layers, name='multirnn')
 
 
     def word_embeddings(self, config, vocab):
         with tf.device("/cpu:0"):
-            embedding = tf.get_variable("embedding", [config.vocab_size,
-                                                      config.learn_wordemb_size],
+            embedding = tf.get_variable("word_embedding", [config.vocab_size,
+                                                           config.learn_wordemb_size],
                                         initializer=tf.contrib.layers.xavier_initializer())
             if config.pretrained_emb:
                 cembedding = tf.constant(vocab.embeddings, dtype=embedding.dtype,
-                                         name="pre_embedding")
-                embedding = tf.concat(1, [embedding, cembedding])
-            inputs = tf.nn.embedding_lookup(embedding, self.input_data)
+                                         name="pre_word_embedding")
+                embedding = tf.concat(1, [embedding, cembedding], name='concat_word_embeddings')
+            inputs = tf.nn.embedding_lookup(embedding, self.input_data,
+                                            name='word_embedding_lookup')
         return inputs
 
 
@@ -79,35 +85,40 @@ class LMModel(object):
             except KeyError:
                 vocab_aux = 2 # binary
             with tf.device("/cpu:0"):
-                embedding = tf.get_variable("embedding_"+feat, [vocab_aux,
+                embedding = tf.get_variable("struct_embedding."+feat, [vocab_aux,
                                                                 config.mimic_embeddings[feat]],
                                             initializer=tf.contrib.layers.xavier_initializer())
                 if feat in config.var_len_features:
                     padzero = np.ones([vocab_aux, 1])
                     padzero[0,0] = 0
-                    padzero = tf.constant(padzero, dtype=tf.float32)
+                    padzero = tf.constant(padzero, dtype=tf.float32, name='struct_padzero.'+feat)
                     embedding = embedding * padzero # force 0 to have zero embedding
-                val_embedding = tf.nn.embedding_lookup(embedding, self.aux_data[feat])
+                val_embedding = tf.nn.embedding_lookup(embedding, self.aux_data[feat],
+                                                       name='struct_embedding_lookup.'+feat)
                 if feat in config.var_len_features:
                     if config.training and config.struct_keep_prob < 1:
                         # drop random structured info items entirely
                         val_embedding = tf.nn.dropout(val_embedding, config.struct_keep_prob,
                                                       noise_shape=tf.pack([config.batch_size,
-                                                                   tf.shape(val_embedding)[1], 1]))
-                    reduced = tf.reduce_sum(val_embedding, 1) / \
-                              tf.reshape(tf.maximum(self.aux_data_len[feat], 1),
-                                                    [config.batch_size, 1]) # mean
+                                                                   tf.shape(val_embedding)[1], 1]),
+                                                      name='struct_dropout_varlen')
+                    reduced = tf.reduce_sum(val_embedding, 1, name='sum_struct_val_embeddings') / \
+                              tf.reshape(tf.maximum(self.aux_data_len[feat], 1,
+                                                    name='struct_mean_max'),
+                                         [config.batch_size, 1], name='struct_mean_reshape') # mean
                     reduced = tf.nn.relu(reduced)
                 else:
                     reduced = val_embedding
                     if config.training and config.struct_keep_prob < 1:
                         reduced = tf.nn.dropout(reduced, config.struct_keep_prob,
-                                                noise_shape=[config.batch_size, 1, 1])
-            emb = tf.reshape(reduced, [-1, config.mimic_embeddings[feat]])
-            transform_w = tf.get_variable("emb_transform_"+feat,
+                                                noise_shape=[config.batch_size, 1, 1],
+                                                name='struct_dropout_fixlen')
+            emb = tf.reshape(reduced, [-1, config.mimic_embeddings[feat]],
+                             name='reshape_pre_transform.'+feat)
+            transform_w = tf.get_variable("emb_transform."+feat,
                                           [config.mimic_embeddings[feat], emb_size],
                                           initializer=tf.contrib.layers.xavier_initializer())
-            transformed = tf.matmul(emb, transform_w)
+            transformed = tf.matmul(emb, transform_w, name='transform_embs.'+feat)
             reshaped = tf.reshape(transformed, [config.batch_size, emb_size])
             emb_list.append(reshaped)
 
@@ -123,30 +134,36 @@ class LMModel(object):
                 emb_size = max(config.mimic_embeddings.values())
                 transform_w = tf.get_variable("struct_transform_w", [emb_size, config.hidden_size],
                                               initializer=tf.contrib.layers.xavier_initializer())
-                structured_inputs = tf.matmul(structured_inputs, transform_w)
+                structured_inputs = tf.matmul(structured_inputs, transform_w,
+                                              name='transform_structs')
 
             for time_step in range(config.num_steps):
                 if time_step > 0: tf.get_variable_scope().reuse_variables()
                 (cell_output, state) = cell(inputs[:, time_step, :], state)
                 if config.conditional:
-                    if config.training and config.struct_keep_prob < 1:
+                    if config.training and config.struct_keep_prob < 1: # TODO remove
                         dropped_inputs = tf.nn.dropout(structured_inputs, config.struct_keep_prob,
-                                                       noise_shape=[config.batch_size, 1])
+                                                       noise_shape=[config.batch_size, 1],
+                                                       name='old_struct_dropout')
                     else:
                         dropped_inputs = structured_inputs
                     # state is:           batch_size x 2 * size * num_layers
                     # dropped_inputs is:  batch_size x size
                     # concat is:          batch_size x size * (1 + (2 * num_layers))
-                    concat = tf.concat(1, [state, dropped_inputs])
-                    nocond_concat = tf.concat(1, [state, tf.zeros_like(dropped_inputs)])
+                    concat = tf.concat(1, [state, dropped_inputs], name='gate_concat')
+                    nocond_concat = tf.concat(1, [state, tf.zeros_like(dropped_inputs)],
+                                              name='nocond_gate_concat')
                     gate_w = tf.get_variable("struct_gate_w",
                                              [config.hidden_size * (1 + (2 * config.num_layers)),
                                               config.hidden_size],
                                              initializer=tf.contrib.layers.xavier_initializer())
                     gate_b = tf.get_variable("struct_gate_b", [config.hidden_size],
                                              initializer=tf.ones_initializer)
-                    gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(concat, gate_w), gate_b))
-                    nocond_gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(nocond_concat, gate_w),
+                    gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(concat, gate_w,
+                                                               name='gate_transform'),
+                                                     gate_b))
+                    nocond_gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(nocond_concat, gate_w,
+                                                                     name='nocond_gate_transform'),
                                                             gate_b))
                     outputs.append(((1 - gate) * cell_output) + (gate * structured_inputs))
                     nocond_outputs.append((1 - nocond_gate) * cell_output)
@@ -163,9 +180,10 @@ class LMModel(object):
                                     initializer=tf.contrib.layers.xavier_initializer())
         softmax_b = tf.get_variable("softmax_b", [config.vocab_size],
                                     initializer=tf.ones_initializer)
-        logits = tf.matmul(output, softmax_w) + softmax_b
+        logits = tf.matmul(output, softmax_w, name='softmax_transform') + softmax_b
         if config.conditional:
-            nocond_logits = tf.matmul(nocond_output, softmax_w) + softmax_b
+            nocond_logits = tf.matmul(nocond_output, softmax_w,
+                                      name='nocond_softmax_transform') + softmax_b
         loss = tf.nn.seq2seq.sequence_loss_by_example([logits],
                                                       [tf.reshape(self.targets, [-1])],
                                                       [tf.reshape(self.mask, [-1])])
@@ -184,13 +202,15 @@ class LMModel(object):
         with tf.variable_scope("FF"):
             words = []
             for i in range(config.num_steps):
-                wordi = tf.squeeze(tf.slice(inputs, [0,i,0], [-1,1,-1]), [1])
+                wordi = tf.squeeze(tf.slice(inputs, [0,i,0], [-1,1,-1], name='word_slice'), [1],
+                                   name='word_squeeze')
                 transform_w = tf.get_variable("word_transform_w"+str(i),
                                               [word_emb_size, config.hidden_size],
                                               initializer=tf.contrib.layers.xavier_initializer())
                 transform_b = tf.get_variable("word_transform_b"+str(i), [config.hidden_size],
                                               initializer=tf.ones_initializer)
-                wordi = tf.nn.bias_add(tf.matmul(wordi, transform_w), transform_b)
+                wordi = tf.nn.bias_add(tf.matmul(wordi, transform_w,
+                                                 name='w'+str(i)+'_transform'), transform_b)
                 words.append(wordi)
             context = tf.nn.relu(sum(words))
             context_transform_w = tf.get_variable("context_transform_w", [config.hidden_size,
@@ -198,7 +218,8 @@ class LMModel(object):
                                          initializer=tf.contrib.layers.xavier_initializer())
             context_transform_b = tf.get_variable("context_transform_b", [config.hidden_size],
                                          initializer=tf.ones_initializer)
-            context = tf.nn.bias_add(tf.matmul(context, context_transform_w), context_transform_b)
+            context = tf.nn.bias_add(tf.matmul(context, context_transform_w,
+                                               name='context_transform'), context_transform_b)
             if config.training and config.keep_prob < 1:
                 context = tf.nn.dropout(context, config.keep_prob)
 
@@ -209,25 +230,28 @@ class LMModel(object):
                                               initializer=tf.contrib.layers.xavier_initializer())
                 transform_b = tf.get_variable("struct_transform_b", [config.hidden_size],
                                               initializer=tf.ones_initializer)
-                structured_inputs = tf.nn.bias_add(tf.matmul(structured_inputs, transform_w),
+                structured_inputs = tf.nn.bias_add(tf.matmul(structured_inputs, transform_w,
+                                                             name='struct_transform'),
                                                    transform_b)
                 if config.training and config.keep_prob < 1:
                     structured_inputs = tf.nn.dropout(structured_inputs, config.keep_prob)
 
-                concat = tf.concat(1, [context, structured_inputs])
+                concat = tf.concat(1, [context, structured_inputs], name='gate_concat')
                 gate_w = tf.get_variable("struct_gate_w",
                                          [config.hidden_size * 2, config.hidden_size],
                                          initializer=tf.contrib.layers.xavier_initializer())
                 gate_b = tf.get_variable("struct_gate_b", [config.hidden_size],
                                          initializer=tf.ones_initializer)
-                gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(concat, gate_w), gate_b))
+                gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(concat, gate_w, name='gate_transform'),
+                                                 gate_b))
                 context = ((1 - gate) * context) + (gate * structured_inputs)
 
             postgate_w = tf.get_variable("postgate_w", [config.hidden_size, config.hidden_size],
                                          initializer=tf.contrib.layers.xavier_initializer())
             postgate_b = tf.get_variable("postgate_b", [config.hidden_size],
                                          initializer=tf.ones_initializer)
-            context = tf.nn.bias_add(tf.matmul(context, postgate_w), postgate_b)
+            context = tf.nn.bias_add(tf.matmul(context, postgate_w, name='postgate_transform'),
+                                     postgate_b)
 
         return tf.nn.relu(context)
 
@@ -242,7 +266,8 @@ class LMModel(object):
             return tf.nn.sampled_softmax_loss(softmax_w, softmax_b, output, targets,
                                               config.softmax_samples, config.vocab_size)
         else:
-            logits = tf.nn.bias_add(tf.matmul(output, tf.transpose(softmax_w)), softmax_b)
+            logits = tf.nn.bias_add(tf.matmul(output, tf.transpose(softmax_w),
+                                    name='softmax_transform'), softmax_b)
             return tf.nn.sparse_softmax_cross_entropy_with_logits(logits, self.targets)
 
 
@@ -286,7 +311,7 @@ class LMModel(object):
         return optimizer.apply_gradients(zip(grads, tvars))
 
 
-def run_epoch(session, m, config, vocab, saver, steps, verbose=False):
+def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata, verbose=False):
     """Runs the model on the given data."""
     start_time = time.time()
     costs = 0.0
@@ -324,17 +349,30 @@ def run_epoch(session, m, config, vocab, saver, steps, verbose=False):
                 f_dict[m.aux_data[feat]] = vals
                 f_dict[m.aux_data_len[feat]] = aux_len[feat]
 
+        kwargs = {}
+        if not config.profiled:
+            kwargs['options'] = run_options
+            kwargs['run_metadata'] = run_metadata
+
         if inspect:
             cost, state, loss, nocond_loss, _ = session.run([m.cost, m.final_state, m.loss,
-                                                             m.nocond_loss, m.train_op], f_dict)
+                                                             m.nocond_loss, m.train_op], f_dict,
+                                                            **kwargs)
             difference = np.exp(-loss) - np.exp(-nocond_loss)
             xs.append(x)
             ms.append(mask)
             differences.append(difference)
         elif config.recurrent:
-            cost, state, _ = session.run([m.cost, m.final_state, m.train_op], f_dict)
+            cost, state, _ = session.run([m.cost, m.final_state, m.train_op], f_dict, **kwargs)
         else:
-            cost, _ = session.run([m.cost, m.train_op], f_dict)
+            cost, _ = session.run([m.cost, m.train_op], f_dict, **kwargs)
+
+        if not config.profiled:
+            tl = timeline.Timeline(run_metadata.step_stats)
+            ctf = tl.generate_chrome_trace_format()
+            with open(config.timeline_file, 'w') as f:
+                f.write(ctf)
+            config.profiled = True
 
         costs += cost
         shortterm_costs += cost
@@ -387,6 +425,8 @@ def main(_):
     config_proto = tf.ConfigProto()
     config_proto.gpu_options.allow_growth = True
     with tf.Graph().as_default(), tf.Session(config=config_proto) as session:
+        run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+        run_metadata = tf.RunMetadata()
         with tf.variable_scope("model", reuse=None):
             m = LMModel(config=config)
             m.prepare(config, vocab)
@@ -407,7 +447,8 @@ def main(_):
             if config.training:
                 m.assign_lr(session, config.learning_rate) #* lr_decay)
                 print "Epoch: %d Learning rate: %.3f" % (i + 1, session.run(m.lr))
-            perplexity, steps = run_epoch(session, m, config, vocab, saver, steps, verbose=True)
+            perplexity, steps = run_epoch(session, m, config, vocab, saver, steps, run_options,
+                                          run_metadata, verbose=True)
             if config.training:
                 print "Epoch: %d Train Perplexity: %.3f" % (i + 1, perplexity)
             else:
