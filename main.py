@@ -85,14 +85,15 @@ class LMModel(object):
             except KeyError:
                 vocab_aux = 2 # binary
             with tf.device("/cpu:0"):
-                embedding = tf.get_variable("struct_embedding."+feat, [vocab_aux,
+                vocab_dims = vocab_aux
+                if feat in config.var_len_features:
+                    vocab_dims -= 1
+                embedding = tf.get_variable("struct_embedding."+feat, [vocab_dims,
                                                                 config.mimic_embeddings[feat]],
                                             initializer=tf.contrib.layers.xavier_initializer())
                 if feat in config.var_len_features:
-                    padzero = np.ones([vocab_aux, 1])
-                    padzero[0,0] = 0
-                    padzero = tf.constant(padzero, dtype=tf.float32, name='struct_padzero.'+feat)
-                    embedding = embedding * padzero # force 0 to have zero embedding
+                    embedding = tf.concat(0, [tf.zeros([1, config.mimic_embeddings[feat]]),
+                                              embedding], name='struct_concat.'+feat)
                 val_embedding = tf.nn.embedding_lookup(embedding, self.aux_data[feat],
                                                        name='struct_embedding_lookup.'+feat)
                 if feat in config.var_len_features:
