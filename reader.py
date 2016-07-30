@@ -135,7 +135,6 @@ def mimic_iterator(config, vocab):
                         span = min(len(iter_data), epoch_size * config.num_steps + 1)
                         data[i, 0:span] = iter_data[:span]
                 aux_data = {}
-                aux_data_len = {}
                 if config.conditional:
                     for feat, vals in batch_aux_data.items():
                         if feat in config.fixed_len_features:
@@ -144,14 +143,11 @@ def mimic_iterator(config, vocab):
                             max_struct_len = max(len(v) for v in vals)
                         aux_data[feat] = np.zeros([config.batch_size, max_struct_len],
                                                   dtype=np.int32)
-                        aux_data_len[feat] = np.zeros([config.batch_size], dtype=np.int32)
                         for i, iter_data in enumerate(vals):
                             if feat in config.fixed_len_features:
                                 aux_data[feat][i, 0] = iter_data
-                                aux_data_len[feat][i] = 1
                             else:
                                 aux_data[feat][i, 0:len(iter_data)] = iter_data
-                                aux_data_len[feat][i] = len(iter_data)
 
                 new_batch = True
                 for i in xrange(epoch_size):
@@ -162,5 +158,5 @@ def mimic_iterator(config, vocab):
                     else:
                         y = data[:, (i+1)*config.num_steps]
                         m = None
-                    yield (x, y, m, aux_data, aux_data_len, new_batch)
+                    yield (x, y, m, aux_data, new_batch)
                     new_batch = False

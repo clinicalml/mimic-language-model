@@ -49,8 +49,6 @@ class LMModel(object):
                 if dims > 0:
                     self.aux_data[feat] = tf.placeholder(tf.int32, [batch_size, None],
                                                          name='aux_data.'+feat)
-                    self.aux_data_len[feat] = tf.placeholder(tf.float32, [batch_size],
-                                                             name='aux_data_len.'+feat)
 
 
     def rnn_cell(self, config):
@@ -64,7 +62,7 @@ class LMModel(object):
     def word_embeddings(self, config, vocab):
         with tf.device("/cpu:0"):
             embedding = tf.get_variable("word_embedding", [config.vocab_size,
-                                                           config.learn_wordemb_size],
+                                                           config.word_emb_size],
                                         initializer=tf.contrib.layers.xavier_initializer())
             if config.pretrained_emb:
                 cembedding = tf.constant(vocab.embeddings, dtype=embedding.dtype,
@@ -89,7 +87,7 @@ class LMModel(object):
                 if feat in config.var_len_features:
                     vocab_dims -= 1
                 embedding = tf.get_variable("struct_embedding."+feat, [vocab_dims,
-                                                                config.mimic_embeddings[feat]],
+                                                                    config.mimic_embeddings[feat]],
                                             initializer=tf.contrib.layers.xavier_initializer())
                 if feat in config.var_len_features:
                     embedding = tf.concat(0, [tf.zeros([1, config.mimic_embeddings[feat]]),
@@ -102,18 +100,16 @@ class LMModel(object):
                         val_embedding = tf.nn.dropout(val_embedding, config.struct_keep_prob,
                                                       noise_shape=tf.pack([config.batch_size,
                                                                    tf.shape(val_embedding)[1], 1]),
-                                                      name='struct_dropout_varlen')
-                    reduced = tf.reduce_sum(val_embedding, 1, name='sum_struct_val_embeddings') / \
-                              tf.reshape(tf.maximum(self.aux_data_len[feat], 1,
-                                                    name='struct_mean_max'),
-                                         [config.batch_size, 1], name='struct_mean_reshape') # mean
+                                                      name='struct_dropout_varlen.'+feat)
+                    reduced = tf.reduce_sum(val_embedding, 1,
+                                            name='sum_struct_val_embeddings.'+feat)
                     reduced = tf.nn.relu(reduced)
                 else:
                     reduced = val_embedding
                     if config.training and config.struct_keep_prob < 1:
                         reduced = tf.nn.dropout(reduced, config.struct_keep_prob,
                                                 noise_shape=[config.batch_size, 1, 1],
-                                                name='struct_dropout_fixlen')
+                                                name='struct_dropout_fixlen.'+feat)
             emb = tf.reshape(reduced, [-1, config.mimic_embeddings[feat]],
                              name='reshape_pre_transform.'+feat)
             transform_w = tf.get_variable("emb_transform."+feat,
@@ -200,6 +196,10 @@ class LMModel(object):
 
     def ff(self, inputs, structured_inputs, config):
         word_emb_size = inputs.get_shape()[2]
+        emb_size = max(config.mimic_embeddings.values())
+        assert word_emb_size >= config.hidden_size
+        assert emb_size >= config.hidden_size
+
         with tf.variable_scope("FF"):
             words = []
             for i in range(config.num_steps):
@@ -225,7 +225,6 @@ class LMModel(object):
                 context = tf.nn.dropout(context, config.keep_prob)
 
             if config.conditional:
-                emb_size = max(config.mimic_embeddings.values())
                 structured_inputs = tf.nn.relu(structured_inputs)
                 transform_w = tf.get_variable("struct_transform_w", [emb_size, config.hidden_size],
                                               initializer=tf.contrib.layers.xavier_initializer())
@@ -306,9 +305,9 @@ class LMModel(object):
 
     def train(self, config):
         self.lr = tf.Variable(0.0, trainable=False)
+        optimizer = tf.train.AdamOptimizer(self.lr)
         tvars = tf.trainable_variables()
         grads, _ = tf.clip_by_global_norm(tf.gradients(self.cost, tvars), config.max_grad_norm)
-        optimizer = tf.train.AdamOptimizer(self.lr)
         return optimizer.apply_gradients(zip(grads, tvars))
 
 
@@ -320,24 +319,9 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
     shortterm_costs = 0.0
     shortterm_iters = 0
     batches = 0
-    inspect = False
     if config.recurrent:
         zero_state = m.initial_state.eval()
-    for step, (x, y, mask, aux, aux_len, new_batch) in enumerate(reader.mimic_iterator(config,
-                                                                                       vocab)):
-        if new_batch and not config.training and config.recurrent and config.conditional and \
-                                                                      config.inspect_every > 0:
-            batches += 1
-            if inspect:
-                utils.inspect_conditional_utility(xs, ms, differences, config, vocab)
-            if batches % config.inspect_every == 0:
-                inspect = True
-                xs = []
-                ms = []
-                differences = []
-            else:
-                inspect = False
-
+    for step, (x, y, mask, aux, new_batch) in enumerate(reader.mimic_iterator(config, vocab)):
         f_dict = {m.input_data: x, m.targets: y}
         if config.recurrent:
             f_dict[m.mask] = mask
@@ -348,22 +332,13 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
         if config.conditional:
             for feat, vals in aux.items():
                 f_dict[m.aux_data[feat]] = vals
-                f_dict[m.aux_data_len[feat]] = aux_len[feat]
 
         kwargs = {}
         if not config.profiled:
             kwargs['options'] = run_options
             kwargs['run_metadata'] = run_metadata
 
-        if inspect:
-            cost, state, loss, nocond_loss, _ = session.run([m.cost, m.final_state, m.loss,
-                                                             m.nocond_loss, m.train_op], f_dict,
-                                                            **kwargs)
-            difference = np.exp(-loss) - np.exp(-nocond_loss)
-            xs.append(x)
-            ms.append(mask)
-            differences.append(difference)
-        elif config.recurrent:
+        if config.recurrent:
             cost, state, _ = session.run([m.cost, m.final_state, m.train_op], f_dict, **kwargs)
         else:
             cost, _ = session.run([m.cost, m.train_op], f_dict, **kwargs)
