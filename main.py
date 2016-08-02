@@ -255,7 +255,7 @@ class LMModel(object):
                                           [config.hidden_size, config.hidden_size],
                                           initializer=tf.contrib.layers.xavier_initializer())
                 gate2_b = tf.get_variable("struct_gate2_b", [config.hidden_size],
-                                          initializer=tf.ones_initializer)
+                                          initializer=tf.zeros_initializer)
                 gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(gate, gate2_w, name='gate2_transform'),
                                                  gate2_b))
                 context += gate * structured_inputs

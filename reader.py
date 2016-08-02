@@ -167,12 +167,10 @@ def mimic_iterator(config, vocab):
         batches = []
         for data in _mimic_iterator_unbuffered(config, vocab):
             batches.append(data)
-            if len(batches) >= config.data_rand_buffer:
-                random.shuffle(batches)
-                for batch in batches:
-                    yield batch
-                batches = []
-        if batches:
-            random.shuffle(batches)
-            for batch in batches:
-                yield batch
+            size = len(batches)
+            if size >= config.data_rand_buffer:
+                j = random.randint(0, size-1)
+                yield batches.pop(j)
+        random.shuffle(batches)
+        for batch in batches:
+            yield batch
