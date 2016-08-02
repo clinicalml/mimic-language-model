@@ -161,6 +161,7 @@ def _mimic_iterator_unbuffered(config, vocab):
 
 
 def mimic_iterator(config, vocab):
+    random.seed(0) # make deterministic
     if config.recurrent:
         yield _mimic_iterator_unbuffered(config, vocab)
     else:
