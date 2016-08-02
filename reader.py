@@ -52,7 +52,7 @@ class Vocab(object):
             print 'Auxiliary vocab loaded.'
 
 
-def mimic_iterator(config, vocab):
+def _mimic_iterator_unbuffered(config, vocab):
     if config.training:
         splits = config.training_splits
     else:
@@ -84,14 +84,7 @@ def mimic_iterator(config, vocab):
             batch_len = ((len(raw_data) - 1) // config.batch_size) + 1
             pad_count = (batch_len * config.batch_size) - len(raw_data)
             indices = range(batch_len)
-            if config.profiled:
-                random.shuffle(indices)
-            else:
-                # make sure the largest length batch is the first batch seen as we profile on the
-                # first batch
-                indices_but1 = indices[:-1]
-                random.shuffle(indices_but1)
-                indices = indices[-1:] + indices_but1
+            random.shuffle(indices)
 
             raw_data = [[] for _ in range(pad_count)] + raw_data
             grouped_raw_data = [group for group in utils.grouper(config.batch_size, raw_data)]
@@ -117,13 +110,14 @@ def mimic_iterator(config, vocab):
                 if config.recurrent:
                     max_note_len = max(len(note) for note in batch_data)
                     epoch_size = ((max_note_len - 2) // config.num_steps) + 1
+                    data = np.zeros([config.batch_size, epoch_size * config.num_steps + 1],
+                                    dtype=np.int32)
                 else:
                     min_note_len = min(len(note) for note in batch_data)
-                    epoch_size = (min_note_len - 1) // config.num_steps # this can become negative!
-                if epoch_size <= 0:
-                    continue
-                data = np.zeros([config.batch_size, epoch_size * config.num_steps + 1],
-                                dtype=np.int32)
+                    data = np.zeros([config.batch_size, min_note_len], dtype=np.int32)
+                    epoch_size = min_note_len - config.num_steps # this can become negative!
+                    if epoch_size <= 0:
+                        continue
                 if config.recurrent:
                     mask = np.zeros([config.batch_size, epoch_size * config.num_steps + 1],
                                     dtype=np.float32)
@@ -132,8 +126,7 @@ def mimic_iterator(config, vocab):
                         data[i, 0:len(iter_data)] = iter_data
                         mask[i, 0:len(iter_data)] = 1.0
                     else:
-                        span = min(len(iter_data), epoch_size * config.num_steps + 1)
-                        data[i, 0:span] = iter_data[:span]
+                        data[i, 0:min_note_len] = iter_data[:min_note_len]
                 aux_data = {}
                 if config.conditional:
                     for feat, vals in batch_aux_data.items():
@@ -150,13 +143,37 @@ def mimic_iterator(config, vocab):
                                 aux_data[feat][i, 0:len(iter_data)] = iter_data
 
                 new_batch = True
-                for i in xrange(epoch_size):
-                    x = data[:, i*config.num_steps:(i+1)*config.num_steps]
+                epochs = range(epoch_size)
+                if not config.recurrent:
+                    epochs = [e for e in utils.subset(epochs, config.samples_per_note)]
+                print len(epochs)
+                for i in epochs:
                     if config.recurrent:
+                        x = data[:, i*config.num_steps:(i+1)*config.num_steps]
                         y = data[:, i*config.num_steps+1:(i+1)*config.num_steps+1]
                         m = mask[:, i*config.num_steps+1:(i+1)*config.num_steps+1]
                     else:
-                        y = data[:, (i+1)*config.num_steps]
+                        x = np.concatenate([data[:, i:(i+int(config.num_steps/2))],
+                                   data[:, (i+1+int(config.num_steps/2)):i+1+config.num_steps]], 1)
+                        y = data[:, i+int(config.num_steps/2)]
                         m = None
                     yield (x, y, m, aux_data, new_batch)
                     new_batch = False
+
+
+def mimic_iterator(config, vocab):
+    if config.recurrent:
+        yield _mimic_iterator_unbuffered(config, vocab)
+    else:
+        batches = []
+        for data in _mimic_iterator_unbuffered(config, vocab):
+            batches.append(data)
+            if len(batches) >= config.data_rand_buffer:
+                random.shuffle(batches)
+                for batch in batches:
+                    yield batch
+                batches = []
+        if batches:
+            random.shuffle(batches)
+            for batch in batches:
+                yield batch

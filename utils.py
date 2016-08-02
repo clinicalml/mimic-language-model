@@ -1,4 +1,5 @@
 import itertools
+import random
 
 import numpy as np
 
@@ -22,3 +23,16 @@ def print_color(s, color=None):
 def grouper(n, iterable, fillvalue=None):
     args = [iter(iterable)] * n
     return itertools.izip_longest(*args, fillvalue=fillvalue)
+
+
+def subset(seq, k):
+    if not 0 <= k <= len(seq):
+        for e in seq:
+            yield e
+    else:
+        numbersPicked = 0
+        for i, number in enumerate(seq):
+            prob = (k-numbersPicked) / (len(seq)-i)
+            if random.random() < prob:
+                yield number
+                numbersPicked += 1

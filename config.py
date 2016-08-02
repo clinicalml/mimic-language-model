@@ -13,7 +13,7 @@ flags.DEFINE_float  ("learning_rate",    1e-3,    "ADAM learning rate")
 flags.DEFINE_float  ("max_grad_norm",    5,       "Gradient clipping")
 flags.DEFINE_integer("num_layers",       2,       "Number of LSTM layers")
 flags.DEFINE_integer("num_steps",        20,      "Number of steps to unroll for RNNs")
-flags.DEFINE_integer("context_size",     4,       "Context size for feedforward nets")
+flags.DEFINE_integer("context_size",     4,       "Context size for CBOW")
 flags.DEFINE_integer("hidden_size",      200,     "Hidden state size")
 flags.DEFINE_integer("word_emb_size",    150,     "Number of learnable dimensions in word " \
                                                   "embeddings")
@@ -29,6 +29,9 @@ flags.DEFINE_bool   ("pretrained_emb",   True,    "Use pretrained embeddings")
 flags.DEFINE_bool   ("conditional",      True,    "Use a conditional language model")
 flags.DEFINE_bool   ("training",         True,    "Training mode, turn off for testing")
 flags.DEFINE_bool   ("recurrent",        False,   "Use a recurrent language model")
+flags.DEFINE_integer("data_rand_buffer", 25000,   "Number of buffered CBOW minibatches to " \
+                                                  "randomize")
+flags.DEFINE_integer("samples_per_note", 20,      "Number of CBOW minibatches per note")
 
 flags.DEFINE_integer("dims_gender",         1,   "Dimensionality for gender")
 flags.DEFINE_integer("dims_has_dod",        1,   "Dimensionality for has_dod")
