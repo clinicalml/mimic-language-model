@@ -30,6 +30,7 @@ flags.DEFINE_integer("save_every",       10000,   "Save every these many steps")
 flags.DEFINE_bool   ("pretrained_emb",   True,    "Use pretrained embeddings")
 flags.DEFINE_bool   ("conditional",      True,    "Use a conditional language model")
 flags.DEFINE_bool   ("training",         True,    "Training mode, turn off for testing")
+flags.DEFINE_bool   ("profile",          True,    "Do profiling on first batch")
 flags.DEFINE_bool   ("recurrent",        False,   "Use a recurrent language model")
 flags.DEFINE_integer("data_rand_buffer", 25000,   "Number of buffered CBOW minibatches to " \
                                                   "randomize")
@@ -66,3 +67,6 @@ class Config(object):
         if not self.recurrent:
             self.num_steps = self.context_size # reuse the num_steps config for FF
             assert self.num_steps % 2 == 0
+
+        if not self.profile:
+            self.profiled = True
