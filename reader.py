@@ -146,7 +146,6 @@ def _mimic_iterator_unbuffered(config, vocab):
                 epochs = range(epoch_size)
                 if not config.recurrent:
                     epochs = [e for e in utils.subset(epochs, config.samples_per_note)]
-                print len(epochs)
                 for i in epochs:
                     if config.recurrent:
                         x = data[:, i*config.num_steps:(i+1)*config.num_steps]

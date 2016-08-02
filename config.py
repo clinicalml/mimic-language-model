@@ -1,3 +1,5 @@
+import collections
+
 import tensorflow as tf
 
 flags = tf.flags
@@ -21,7 +23,7 @@ flags.DEFINE_integer("max_steps",        9999999, "Maximum number of steps to ru
 flags.DEFINE_integer("max_epoch",        6,       "Maximum number of epochs to run for")
 flags.DEFINE_integer("softmax_samples",  1000,    "Number of classes to sample for softmax")
 flags.DEFINE_float  ("keep_prob",        1.0,     "Dropout keep probability")
-flags.DEFINE_float  ("struct_keep_prob", 0.5,     "Structural info dropout keep probability")
+flags.DEFINE_float  ("struct_keep_prob", 1.0,     "Structural info dropout keep probability")
 flags.DEFINE_integer("batch_size",       25,      "Batch size")
 flags.DEFINE_integer("print_every",      500,     "Print every these many steps")
 flags.DEFINE_integer("save_every",       10000,   "Save every these many steps")
@@ -37,14 +39,14 @@ flags.DEFINE_integer("dims_gender",         1,   "Dimensionality for gender")
 flags.DEFINE_integer("dims_has_dod",        1,   "Dimensionality for has_dod")
 flags.DEFINE_integer("dims_has_icu_stay",   1,   "Dimensionality for has_icu_stay")
 flags.DEFINE_integer("dims_admission_type", 4,   "Dimensionality for admission_type")
-flags.DEFINE_integer("dims_diagnoses",      250, "Dimensionality for diagnoses")
-flags.DEFINE_integer("dims_procedures",     250, "Dimensionality for procedures")
-flags.DEFINE_integer("dims_labs",           250, "Dimensionality for labs")
-flags.DEFINE_integer("dims_prescriptions",  250, "Dimensionality for prescriptions")
+flags.DEFINE_integer("dims_diagnoses",      150, "Dimensionality for diagnoses")
+flags.DEFINE_integer("dims_procedures",     150, "Dimensionality for procedures")
+flags.DEFINE_integer("dims_labs",           150, "Dimensionality for labs")
+flags.DEFINE_integer("dims_prescriptions",  150, "Dimensionality for prescriptions")
 
 
 class Config(object):
-    mimic_embeddings = {}
+    mimic_embeddings = collections.OrderedDict({})
 
     # additional config
     fixed_len_features = set(['gender', 'has_dod', 'has_icu_stay', 'admission_type'])
@@ -56,7 +58,7 @@ class Config(object):
 
 
     def __init__(self):
-        for k, v in flags.FLAGS.__dict__['__flags'].items():
+        for k, v in sorted(flags.FLAGS.__dict__['__flags'].items(), key=lambda x: x[0]):
             setattr(self, k, v)
             if k.startswith('dims_'):
                 self.mimic_embeddings[k[len('dims_'):]] = v

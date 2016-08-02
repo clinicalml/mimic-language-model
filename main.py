@@ -74,7 +74,6 @@ class LMModel(object):
 
 
     def struct_embeddings(self, config, vocab):
-        emb_size = max(config.mimic_embeddings.values())
         emb_list = []
         for i, (feat, dims) in enumerate(config.mimic_embeddings.items()):
             if dims <= 0: continue
@@ -105,21 +104,14 @@ class LMModel(object):
                                             name='sum_struct_val_embeddings.'+feat)
                     reduced = tf.nn.relu(reduced)
                 else:
-                    reduced = val_embedding
+                    reduced = tf.squeeze(val_embedding, [1])
                     if config.training and config.struct_keep_prob < 1:
                         reduced = tf.nn.dropout(reduced, config.struct_keep_prob,
                                                 noise_shape=[config.batch_size, 1, 1],
                                                 name='struct_dropout_fixlen.'+feat)
-            emb = tf.reshape(reduced, [-1, config.mimic_embeddings[feat]],
-                             name='reshape_pre_transform.'+feat)
-            transform_w = tf.get_variable("emb_transform."+feat,
-                                          [config.mimic_embeddings[feat], emb_size],
-                                          initializer=tf.contrib.layers.xavier_initializer())
-            transformed = tf.matmul(emb, transform_w, name='transform_embs.'+feat)
-            reshaped = tf.reshape(transformed, [config.batch_size, emb_size])
-            emb_list.append(reshaped)
+            emb_list.append(reduced)
 
-        return sum(emb_list)
+        return tf.concat(1, emb_list)
 
 
     def rnn(self, inputs, structured_inputs, cell, config):
@@ -128,7 +120,7 @@ class LMModel(object):
         state = self.initial_state
         with tf.variable_scope("RNN"):
             if config.conditional:
-                emb_size = max(config.mimic_embeddings.values())
+                emb_size = sum(config.mimic_embeddings.values())
                 transform_w = tf.get_variable("struct_transform_w", [emb_size, config.hidden_size],
                                               initializer=tf.contrib.layers.xavier_initializer())
                 structured_inputs = tf.matmul(structured_inputs, transform_w,
@@ -196,54 +188,76 @@ class LMModel(object):
 
     def ff(self, inputs, structured_inputs, config):
         word_emb_size = inputs.get_shape()[2]
-        emb_size = max(config.mimic_embeddings.values())
+        emb_size = sum(config.mimic_embeddings.values())
         assert word_emb_size >= config.hidden_size
         assert emb_size >= config.hidden_size
 
         with tf.variable_scope("FF"):
             words = []
             for i in range(config.num_steps):
-                wordi = tf.squeeze(tf.slice(inputs, [0,i,0], [-1,1,-1], name='word_slice'), [1],
-                                   name='word_squeeze')
-                transform_w = tf.get_variable("word_transform_w"+str(i),
-                                              [word_emb_size, config.hidden_size],
-                                              initializer=tf.contrib.layers.xavier_initializer())
-                transform_b = tf.get_variable("word_transform_b"+str(i), [config.hidden_size],
-                                              initializer=tf.ones_initializer)
-                wordi = tf.nn.bias_add(tf.matmul(wordi, transform_w,
-                                                 name='w'+str(i)+'_transform'), transform_b)
-                words.append(wordi)
+                words.append(tf.squeeze(tf.slice(inputs, [0,i,0], [-1,1,-1], name='word_slice'),
+                                        [1], name='word_squeeze'))
             context = tf.nn.relu(sum(words))
-            context_transform_w = tf.get_variable("context_transform_w", [config.hidden_size,
-                                                                          config.hidden_size],
-                                         initializer=tf.contrib.layers.xavier_initializer())
-            context_transform_b = tf.get_variable("context_transform_b", [config.hidden_size],
-                                         initializer=tf.ones_initializer)
-            context = tf.nn.bias_add(tf.matmul(context, context_transform_w,
-                                               name='context_transform'), context_transform_b)
+
+            context_transform1_w = tf.get_variable("context_transform1_w", [word_emb_size,
+                                                                            config.hidden_size],
+                                                initializer=tf.contrib.layers.xavier_initializer())
+            context_transform1_b = tf.get_variable("context_transform1_b", [config.hidden_size],
+                                                   initializer=tf.ones_initializer)
+            context = tf.nn.bias_add(tf.matmul(context, context_transform1_w,
+                                               name='context_transform1'), context_transform1_b)
+            context = tf.nn.relu(context)
+
+            context_transform2_w = tf.get_variable("context_transform2_w", [config.hidden_size,
+                                                                            config.hidden_size],
+                                                initializer=tf.contrib.layers.xavier_initializer())
+            context_transform2_b = tf.get_variable("context_transform2_b", [config.hidden_size],
+                                                   initializer=tf.ones_initializer)
+            context = tf.nn.bias_add(tf.matmul(context, context_transform2_w,
+                                               name='context_transform2'), context_transform2_b)
+
             if config.training and config.keep_prob < 1:
                 context = tf.nn.dropout(context, config.keep_prob)
 
             if config.conditional:
+                transform1_w = tf.get_variable("struct_transform1_w", [emb_size,
+                                                                       config.hidden_size],
+                                               initializer=tf.contrib.layers.xavier_initializer())
+                transform1_b = tf.get_variable("struct_transform1_b", [config.hidden_size],
+                                               initializer=tf.ones_initializer)
+                structured_inputs = tf.nn.bias_add(tf.matmul(structured_inputs, transform1_w,
+                                                             name='struct_transform1'),
+                                                   transform1_b)
                 structured_inputs = tf.nn.relu(structured_inputs)
-                transform_w = tf.get_variable("struct_transform_w", [emb_size, config.hidden_size],
-                                              initializer=tf.contrib.layers.xavier_initializer())
-                transform_b = tf.get_variable("struct_transform_b", [config.hidden_size],
-                                              initializer=tf.ones_initializer)
-                structured_inputs = tf.nn.bias_add(tf.matmul(structured_inputs, transform_w,
-                                                             name='struct_transform'),
-                                                   transform_b)
+
+                transform2_w = tf.get_variable("struct_transform2_w", [config.hidden_size,
+                                                                       config.hidden_size],
+                                               initializer=tf.contrib.layers.xavier_initializer())
+                transform2_b = tf.get_variable("struct_transform2_b", [config.hidden_size],
+                                               initializer=tf.ones_initializer)
+                structured_inputs = tf.nn.bias_add(tf.matmul(structured_inputs, transform2_w,
+                                                             name='struct_transform2'),
+                                                   transform2_b)
+
                 if config.training and config.keep_prob < 1:
                     structured_inputs = tf.nn.dropout(structured_inputs, config.keep_prob)
 
                 concat = tf.concat(1, [context, structured_inputs], name='gate_concat')
-                gate_w = tf.get_variable("struct_gate_w",
-                                         [config.hidden_size * 2, config.hidden_size],
-                                         initializer=tf.contrib.layers.xavier_initializer())
-                gate_b = tf.get_variable("struct_gate_b", [config.hidden_size],
-                                         initializer=tf.ones_initializer)
-                gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(concat, gate_w, name='gate_transform'),
-                                                 gate_b))
+                gate1_w = tf.get_variable("struct_gate1_w",
+                                          [config.hidden_size * 2, config.hidden_size],
+                                          initializer=tf.contrib.layers.xavier_initializer())
+                gate1_b = tf.get_variable("struct_gate1_b", [config.hidden_size],
+                                          initializer=tf.ones_initializer)
+                gate = tf.nn.relu(tf.nn.bias_add(tf.matmul(concat, gate1_w,
+                                                           name='gate_transform1'), gate1_b))
+
+                gate2_w = tf.get_variable("struct_gate2_w",
+                                          [config.hidden_size, config.hidden_size],
+                                          initializer=tf.contrib.layers.xavier_initializer())
+                gate2_b = tf.get_variable("struct_gate2_b", [config.hidden_size],
+                                          initializer=tf.ones_initializer)
+                gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(gate, gate2_w, name='gate2_transform'),
+                                                 gate2_b))
                 context += gate * structured_inputs
 
             postgate_w = tf.get_variable("postgate_w", [config.hidden_size, config.hidden_size],
