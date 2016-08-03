@@ -55,8 +55,6 @@ class Config(object):
     testing_splits = range(1)
     training_splits = range(1,100)
 
-    profiled = False
-
 
     def __init__(self):
         for k, v in sorted(flags.FLAGS.__dict__['__flags'].items(), key=lambda x: x[0]):
@@ -67,6 +65,3 @@ class Config(object):
         if not self.recurrent:
             self.num_steps = self.context_size # reuse the num_steps config for FF
             assert self.num_steps % 2 == 0
-
-        if not self.profile:
-            self.profiled = True

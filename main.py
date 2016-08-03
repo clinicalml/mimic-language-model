@@ -348,7 +348,7 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
                 f_dict[m.aux_data[feat]] = vals
 
         kwargs = {}
-        if not config.profiled:
+        if config.profile:
             kwargs['options'] = run_options
             kwargs['run_metadata'] = run_metadata
 
@@ -357,12 +357,12 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
         else:
             cost, _ = session.run([m.cost, m.train_op], f_dict, **kwargs)
 
-        if not config.profiled:
+        if config.profile:
             tl = timeline.Timeline(run_metadata.step_stats)
             ctf = tl.generate_chrome_trace_format()
             with open(config.timeline_file, 'w') as f:
                 f.write(ctf)
-            config.profiled = True
+            config.profile = False
 
         costs += cost
         shortterm_costs += cost
