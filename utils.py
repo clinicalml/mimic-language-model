@@ -1,6 +1,7 @@
 import itertools
 import random
 
+import tensorflow as tf
 import numpy as np
 
 
@@ -36,3 +37,7 @@ def subset(seq, k):
             if random.random() < prob:
                 yield number
                 numbersPicked += 1
+
+
+def l1_norm(tensor):
+    return tf.reduce_sum(tf.abs(tensor))

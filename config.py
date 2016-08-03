@@ -19,6 +19,8 @@ flags.DEFINE_integer("context_size",     4,       "Context size for CBOW")
 flags.DEFINE_integer("hidden_size",      200,     "Hidden state size")
 flags.DEFINE_integer("word_emb_size",    150,     "Number of learnable dimensions in word " \
                                                   "embeddings")
+flags.DEFINE_float  ("struct_l1_weight", 1.0,     "Weight for minimizing L1-norm of structured " \
+                                                  "embeddings")
 flags.DEFINE_integer("max_steps",        9999999, "Maximum number of steps to run for")
 flags.DEFINE_integer("max_epoch",        6,       "Maximum number of epochs to run for")
 flags.DEFINE_integer("softmax_samples",  1000,    "Number of classes to sample for softmax")

@@ -75,6 +75,8 @@ class LMModel(object):
 
     def struct_embeddings(self, config, vocab):
         emb_list = []
+        with tf.device("/cpu:0"):
+            l1_norm = tf.zeros([])
         for i, (feat, dims) in enumerate(config.mimic_embeddings.items()):
             if dims <= 0: continue
             try:
@@ -87,7 +89,8 @@ class LMModel(object):
                     vocab_dims -= 1
                 embedding = tf.get_variable("struct_embedding."+feat, [vocab_dims,
                                                                     config.mimic_embeddings[feat]],
-                                            initializer=tf.contrib.layers.xavier_initializer())
+                                           initializer=tf.truncated_normal_initializer(stddev=0.1))
+                l1_norm += utils.l1_norm(embedding)
                 if feat in config.var_len_features:
                     embedding = tf.concat(0, [tf.zeros([1, config.mimic_embeddings[feat]]),
                                               embedding], name='struct_concat.'+feat)
@@ -111,7 +114,7 @@ class LMModel(object):
                                                 name='struct_dropout_fixlen.'+feat)
             emb_list.append(reduced)
 
-        return tf.concat(1, emb_list)
+        return tf.concat(1, emb_list), l1_norm
 
 
     def rnn(self, inputs, structured_inputs, cell, config):
@@ -296,7 +299,7 @@ class LMModel(object):
 
         structured_inputs = None
         if config.conditional:
-            structured_inputs = self.struct_embeddings(config, vocab)
+            structured_inputs, struct_l1 = self.struct_embeddings(config, vocab)
 
         if config.recurrent:
             outputs, self.final_state, nocond_outputs = self.rnn(inputs, structured_inputs, cell,
@@ -306,7 +309,11 @@ class LMModel(object):
             output = self.ff(inputs, structured_inputs, config)
             self.loss = self.ff_loss(output, config)
 
-        self.cost = tf.reduce_sum(self.loss) / config.batch_size
+        self.perplexity = tf.reduce_sum(self.loss) / config.batch_size
+        self.additional = tf.zeros([])
+        if config.conditional:
+            self.additional += config.struct_l1_weight * struct_l1
+        self.cost = self.perplexity + self.additional
         if config.training:
             self.train_op = self.train(config)
         else:
@@ -328,8 +335,10 @@ class LMModel(object):
 def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata, verbose=False):
     """Runs the model on the given data."""
     start_time = time.time()
+    perps = 0.0
     costs = 0.0
     iters = 0
+    shortterm_perps = 0.0
     shortterm_costs = 0.0
     shortterm_iters = 0
     batches = 0
@@ -353,9 +362,9 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
             kwargs['run_metadata'] = run_metadata
 
         if config.recurrent:
-            cost, state, _ = session.run([m.cost, m.final_state, m.train_op], f_dict, **kwargs)
+            perp, cost, state, _ = session.run([m.perplexity, m.cost, m.final_state, m.train_op], f_dict, **kwargs)
         else:
-            cost, _ = session.run([m.cost, m.train_op], f_dict, **kwargs)
+            perp, cost, _ = session.run([m.perplexity, m.cost, m.train_op], f_dict, **kwargs)
 
         if config.profile:
             tl = timeline.Timeline(run_metadata.step_stats)
@@ -364,7 +373,9 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
                 f.write(ctf)
             config.profile = False
 
+        perps += perp
         costs += cost
+        shortterm_perps += perp
         shortterm_costs += cost
         if config.recurrent:
             iters += config.num_steps
@@ -375,15 +386,16 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
 
         if verbose and step % config.print_every == 0:
             if config.recurrent:
-                print("%d  perplexity: %.3f speed: %.0f wps" %
-                      (step, np.exp(shortterm_costs / shortterm_iters),
+                print("%d  perplexity: %.3f  cost: %.3f  speed: %.0f wps" %
+                      (step, np.exp(shortterm_perps / shortterm_iters), shortterm_costs / shortterm_iters,
                        shortterm_iters * config.batch_size / (time.time() - start_time)))
             else:
-                print("%d  perplexity: %.3f speed: %.0f wps, %.0f pps" %
-                      (step, np.exp(shortterm_costs / shortterm_iters),
+                print("%d  perplexity: %.3f  cost: %.3f  speed: %.0f wps  %.0f pps" %
+                      (step, np.exp(shortterm_perps / shortterm_iters), shortterm_costs / shortterm_iters,
                        shortterm_iters * config.num_steps * config.batch_size / (time.time() - \
                                                                                  start_time),
                        shortterm_iters * config.batch_size / (time.time() - start_time)))
+            shortterm_perps = 0.0
             shortterm_costs = 0.0
             shortterm_iters = 0
             start_time = time.time()
@@ -395,7 +407,7 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
         if steps + iters >= config.max_steps:
             break
 
-    return np.exp(costs / iters), steps + iters
+    return np.exp(perps / iters), steps + iters
 
 
 def main(_):
