@@ -486,20 +486,23 @@ def main(_):
                 print "You need to provide a valid model file for testing!"
                 sys.exit(1)
 
-        steps = 0
-        for i in xrange(config.max_epoch):
-            if config.training:
-                m.assign_lr(session, config.learning_rate) #* lr_decay)
-                print "Epoch: %d Learning rate: %.3f" % (i + 1, session.run(m.lr))
-            perplexity, steps = run_epoch(session, m, config, vocab, saver, steps, run_options,
-                                          run_metadata, verbose=True)
-            if config.training:
-                print "Epoch: %d Train Perplexity: %.3f" % (i + 1, perplexity)
-            else:
-                print "Test Perplexity: %.3f" % (perplexity,)
-                break
-            if steps >= config.max_steps:
-                break
+        if config.inspect:
+            utils.inspect(session, m, config, vocab, saver)
+        else:
+            steps = 0
+            for i in xrange(config.max_epoch):
+                if config.training:
+                    m.assign_lr(session, config.learning_rate) #* lr_decay)
+                    print "Epoch: %d Learning rate: %.3f" % (i + 1, session.run(m.lr))
+                perplexity, steps = run_epoch(session, m, config, vocab, saver, steps, run_options,
+                                              run_metadata, verbose=True)
+                if config.training:
+                    print "Epoch: %d Train Perplexity: %.3f" % (i + 1, perplexity)
+                else:
+                    print "Test Perplexity: %.3f" % (perplexity,)
+                    break
+                if steps >= config.max_steps:
+                    break
 
 
 if __name__ == "__main__":

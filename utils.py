@@ -41,3 +41,7 @@ def subset(seq, k):
 
 def l1_norm(tensor):
     return tf.reduce_sum(tf.abs(tensor))
+
+
+def inspect(session, m, config, vocab, saver):
+    pass #TODO
