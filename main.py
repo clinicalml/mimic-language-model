@@ -273,6 +273,45 @@ class LMModel(object):
         return tf.nn.relu(context)
 
 
+    def ff_loss_hsm(self, output, config, vocab):
+        l1size = int(np.sqrt(config.vocab_size))
+        l2size = int(np.ceil(np.sqrt(config.vocab_size)))
+        extra = (l1size * l2size) - config.vocab_size
+        clusters = np.array([0 for _ in xrange(config.vocab_size)])
+        rows = np.array([0 for _ in xrange(config.vocab_size)])
+        current = 0
+
+        chooser_w = tf.get_variable("chooser_w", [config.hidden_size, l1size])
+        chooser_b = tf.get_variable("chooser_b", [l1size])
+        l1outs = tf.nn.bias_add(tf.matmul(output, chooser_w, name='chooser_mul'), chooser_b)
+
+        softmax_w = tf.get_variable("softmax_w", [l1size, config.hidden_size, l2size],
+                                    initializer=tf.contrib.layers.xavier_initializer())
+        softmax_b = tf.get_variable("softmax_b", [l1size-1, l2size],
+                                    initializer=tf.ones_initializer)
+        concat = tf.get_variable("softmax_b_concat", [1, l2size - extra],
+                                 initializer=tf.ones_initializer)
+        if extra:
+            padding = tf.constant(-np.inf, shape=[1, extra])
+            concat = tf.concat(1, [concat, padding])
+        softmax_b = tf.concat(0, [softmax_b, concat])
+
+        clusters[vocab.shuffled_indices] = np.array(range(config.vocab_size)) // l2size
+        rows[vocab.shuffled_indices] = np.array(range(config.vocab_size)) % l2size
+        clusters = tf.constant(clusters)
+        rows = tf.constant(rows)
+        l1targets = tf.gather(clusters, self.targets)
+        l2targets = tf.gather(rows, self.targets)
+
+        output = tf.expand_dims(output, 1)
+        bm = tf.batch_matmul(output, tf.gather(softmax_w, l1targets), name='softmax_batch_matmul')
+        l2outs = tf.squeeze(bm, [1]) + tf.gather(softmax_b, l1targets)
+
+        l1loss = tf.nn.sparse_softmax_cross_entropy_with_logits(l1outs, l1targets)
+        l2loss = tf.nn.sparse_softmax_cross_entropy_with_logits(l2outs, l2targets)
+        return l1loss + l2loss
+
+
     def ff_loss(self, output, config):
         softmax_w = tf.get_variable("softmax_w", [config.vocab_size, config.hidden_size],
                                     initializer=tf.contrib.layers.xavier_initializer())
@@ -307,7 +346,10 @@ class LMModel(object):
             self.loss, self.nocond_loss = self.rnn_loss(outputs, nocond_outputs, config)
         else:
             output = self.ff(inputs, structured_inputs, config)
-            self.loss = self.ff_loss(output, config)
+            if config.use_hsm:
+                self.loss = self.ff_loss_hsm(output, config, vocab)
+            else:
+                self.loss = self.ff_loss(output, config)
 
         self.perplexity = tf.reduce_sum(self.loss) / config.batch_size
         self.additional = tf.zeros([])

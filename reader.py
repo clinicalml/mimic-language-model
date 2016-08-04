@@ -17,12 +17,15 @@ import utils
 
 class Vocab(object):
     def __init__(self, config):
+        random.seed(0) # make deterministic
         print 'Loading vocab ...'
         with open(pjoin(config.data_path, 'vocab.pk'), 'rb') as f:
             self.vocab_list = pickle.load(f)
         self.vocab_lookup = {word: idx for (idx, word) in enumerate(self.vocab_list)}
         self.vocab_set = set(self.vocab_list) # for faster checks
         config.vocab_size = len(self.vocab_list)
+        self.shuffled_indices = range(config.vocab_size)
+        random.shuffle(self.shuffled_indices) # for HSM
         if config.pretrained_emb:
             print 'Loading pretrained embeddings ...'
             self.embeddings = None

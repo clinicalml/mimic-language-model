@@ -34,6 +34,7 @@ flags.DEFINE_bool   ("conditional",      True,    "Use a conditional language mo
 flags.DEFINE_bool   ("training",         True,    "Training mode, turn off for testing")
 flags.DEFINE_bool   ("profile",          True,    "Do profiling on first batch")
 flags.DEFINE_bool   ("recurrent",        False,   "Use a recurrent language model")
+flags.DEFINE_bool   ("use_hsm",          True,    "Use two-level hierarchical softmax")
 flags.DEFINE_integer("data_rand_buffer", 25000,   "Number of buffered CBOW minibatches to " \
                                                   "randomize")
 flags.DEFINE_integer("samples_per_note", 20,      "Number of CBOW minibatches per note")
