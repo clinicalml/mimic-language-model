@@ -17,7 +17,7 @@ flags.DEFINE_integer("num_layers",       2,       "Number of LSTM layers")
 flags.DEFINE_integer("num_steps",        20,      "Number of steps to unroll for RNNs")
 flags.DEFINE_integer("context_size",     4,       "Context size for CBOW")
 flags.DEFINE_integer("hidden_size",      200,     "Hidden state size")
-flags.DEFINE_integer("word_emb_size",    150,     "Number of learnable dimensions in word " \
+flags.DEFINE_integer("word_emb_size",    250,     "Number of learnable dimensions in word " \
                                                   "embeddings")
 flags.DEFINE_float  ("struct_l1_weight", 1.0,     "Weight for minimizing L1-norm of structured " \
                                                   "embeddings")
@@ -29,7 +29,7 @@ flags.DEFINE_float  ("struct_keep_prob", 1.0,     "Structural info dropout keep 
 flags.DEFINE_integer("batch_size",       25,      "Batch size")
 flags.DEFINE_integer("print_every",      500,     "Print every these many steps")
 flags.DEFINE_integer("save_every",       10000,   "Save every these many steps")
-flags.DEFINE_bool   ("pretrained_emb",   True,    "Use pretrained embeddings")
+flags.DEFINE_bool   ("pretrained_emb",   False,   "Use pretrained embeddings")
 flags.DEFINE_bool   ("conditional",      True,    "Use a conditional language model")
 flags.DEFINE_bool   ("training",         True,    "Training mode, turn off for testing")
 flags.DEFINE_bool   ("force_trainset",   False,   "Force training set even for testing")
