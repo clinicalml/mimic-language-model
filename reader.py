@@ -56,7 +56,7 @@ class Vocab(object):
 
 
 def _mimic_iterator_unbuffered(config, vocab):
-    if config.training:
+    if config.training or config.force_trainset:
         splits = config.training_splits
     else:
         splits = config.testing_splits
