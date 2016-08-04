@@ -45,6 +45,28 @@ def l1_norm(tensor):
     return tf.reduce_sum(tf.abs(tensor))
 
 
+def inspect_losses(xs, ys, config, vocab, losses):
+    losses = [sorted(e) for e in losses]
+    for x, y, loss in zip(xs, ys, losses):
+        print_color('[', Colors.HEADER)
+        for i in range(config.num_steps // 2):
+            print vocab.vocab_list[x[i]],
+        print_color(vocab.vocab_list[y], Colors.OKGREEN)
+        for i in range(config.num_steps // 2, config.num_steps):
+            print vocab.vocab_list[x[i]],
+        print_color(']', Colors.HEADER)
+        print
+        for k, v in loss:
+            print ("%.3f:" % k),
+            if v == 'all': color = Colors.OKGREEN
+            elif v == 'none': color = Colors.FAIL
+            elif v.startswith('only_'): color = Colors.OKBLUE
+            else: color = Colors.WARNING
+            print_color(v, color)
+            print
+        print
+
+
 def inspect_feature_sparsity(feat, embedding, config, vocab, verbose=False, graph=True):
     print '\n\n' + feat + '\n'
     vocab_size, dims = embedding.shape

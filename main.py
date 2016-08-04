@@ -379,7 +379,7 @@ class LMModel(object):
         return optimizer.apply_gradients(zip(grads, tvars))
 
 
-def call_session(session, m, config, zero_state, batch, profile_kwargs):
+def call_session(session, m, config, vocab, zero_state, batch, profile_kwargs):
     x, y, mask, aux, new_batch = batch
     f_dict = {m.input_data: x, m.targets: y}
     if config.recurrent:
@@ -391,12 +391,48 @@ def call_session(session, m, config, zero_state, batch, profile_kwargs):
     if config.conditional:
         for feat, vals in aux.items():
             f_dict[m.aux_data[feat]] = vals
-
+        if config.inspect == 'struct':
+            for v in m.struct_enable.values():
+                f_dict[v] = 1.0
     if config.recurrent:
-        return session.run([m.perplexity, m.cost, m.final_state, m.train_op], f_dict,
+        ret = session.run([m.perplexity, m.cost, m.final_state, m.train_op], f_dict,
                            **profile_kwargs)
     else:
-        return session.run([m.perplexity, m.cost, m.train_op], f_dict, **profile_kwargs)
+        ret = session.run([m.perplexity, m.cost, m.train_op], f_dict, **profile_kwargs)
+
+    #inspect before returning
+    if config.inspect == 'struct':
+        feats = m.struct_enable.keys()
+        losses = [[] for _ in xrange(config.batch_size)]
+        loss = session.run([m.loss], f_dict)[0]
+        for i in xrange(config.batch_size):
+            losses[i].append((loss[i], 'all'))
+        for v in m.struct_enable.values():
+            f_dict[v] = 0.0
+        loss = session.run([m.loss], f_dict)[0]
+        for i in xrange(config.batch_size):
+            losses[i].append((loss[i], 'none'))
+        for only in [True, False]:
+            for feat in feats:
+                for v in m.struct_enable.values():
+                    if only:
+                        f_dict[v] = 0.0
+                    else:
+                        f_dict[v] = 1.0
+                if only:
+                    f_dict[m.struct_enable[feat]] = 1.0
+                else:
+                    f_dict[m.struct_enable[feat]] = 0.0
+                if only:
+                    s = 'only_'
+                else:
+                    s = 'no_'
+                loss = session.run([m.loss], f_dict)[0]
+                for i in xrange(config.batch_size):
+                    losses[i].append((loss[i], s+feat))
+        utils.inspect_losses(x, y, config, vocab, losses)
+
+    return ret
 
 
 def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata, verbose=False):
@@ -418,10 +454,10 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
             profile_kwargs['run_metadata'] = run_metadata
 
         if config.recurrent:
-            perp, cost, state, _ = call_session(session, m, config, zero_state, batch,
+            perp, cost, state, _ = call_session(session, m, config, vocab, zero_state, batch,
                                                 profile_kwargs)
         else:
-            perp, cost, _ = call_session(session, m, config, None, batch, profile_kwargs)
+            perp, cost, _ = call_session(session, m, config, vocab, None, batch, profile_kwargs)
 
         if config.profile:
             tl = timeline.Timeline(run_metadata.step_stats)
