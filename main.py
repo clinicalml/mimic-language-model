@@ -45,10 +45,13 @@ class LMModel(object):
         if config.conditional:
             self.aux_data = {}
             self.aux_data_len = {}
+            self.struct_enable = {}
             for feat, dims in config.mimic_embeddings.items():
                 if dims > 0:
                     self.aux_data[feat] = tf.placeholder(tf.int32, [batch_size, None],
                                                          name='aux_data.'+feat)
+                    self.struct_enable[feat] = tf.placeholder(tf.float32,
+                                                              name='struct_enable.'+feat)
 
 
     def rnn_cell(self, config):
@@ -96,6 +99,8 @@ class LMModel(object):
                                               embedding], name='struct_concat.'+feat)
                 val_embedding = tf.nn.embedding_lookup(embedding, self.aux_data[feat],
                                                        name='struct_embedding_lookup.'+feat)
+                if config.inspect == 'struct':
+                    val_embedding *= self.struct_enable[feat]
                 if feat in config.var_len_features:
                     if config.training and config.struct_keep_prob < 1:
                         # drop random structured info items entirely
@@ -374,6 +379,26 @@ class LMModel(object):
         return optimizer.apply_gradients(zip(grads, tvars))
 
 
+def call_session(session, m, config, zero_state, batch, profile_kwargs):
+    x, y, mask, aux, new_batch = batch
+    f_dict = {m.input_data: x, m.targets: y}
+    if config.recurrent:
+        f_dict[m.mask] = mask
+        if new_batch:
+            f_dict[m.initial_state] = zero_state
+        else:
+            f_dict[m.initial_state] = state
+    if config.conditional:
+        for feat, vals in aux.items():
+            f_dict[m.aux_data[feat]] = vals
+
+    if config.recurrent:
+        return session.run([m.perplexity, m.cost, m.final_state, m.train_op], f_dict,
+                           **profile_kwargs)
+    else:
+        return session.run([m.perplexity, m.cost, m.train_op], f_dict, **profile_kwargs)
+
+
 def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata, verbose=False):
     """Runs the model on the given data."""
     start_time = time.time()
@@ -386,27 +411,17 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
     batches = 0
     if config.recurrent:
         zero_state = m.initial_state.eval()
-    for step, (x, y, mask, aux, new_batch) in enumerate(reader.mimic_iterator(config, vocab)):
-        f_dict = {m.input_data: x, m.targets: y}
-        if config.recurrent:
-            f_dict[m.mask] = mask
-            if new_batch:
-                f_dict[m.initial_state] = zero_state
-            else:
-                f_dict[m.initial_state] = state
-        if config.conditional:
-            for feat, vals in aux.items():
-                f_dict[m.aux_data[feat]] = vals
-
-        kwargs = {}
+    for step, batch in enumerate(reader.mimic_iterator(config, vocab)):
+        profile_kwargs = {}
         if config.profile:
-            kwargs['options'] = run_options
-            kwargs['run_metadata'] = run_metadata
+            profile_kwargs['options'] = run_options
+            profile_kwargs['run_metadata'] = run_metadata
 
         if config.recurrent:
-            perp, cost, state, _ = session.run([m.perplexity, m.cost, m.final_state, m.train_op], f_dict, **kwargs)
+            perp, cost, state, _ = call_session(session, m, config, zero_state, batch,
+                                                profile_kwargs)
         else:
-            perp, cost, _ = session.run([m.perplexity, m.cost, m.train_op], f_dict, **kwargs)
+            perp, cost, _ = call_session(session, m, config, None, batch, profile_kwargs)
 
         if config.profile:
             tl = timeline.Timeline(run_metadata.step_stats)
@@ -486,8 +501,8 @@ def main(_):
                 print "You need to provide a valid model file for testing!"
                 sys.exit(1)
 
-        if config.inspect:
-            utils.inspect(session, m, config, vocab, saver)
+        if config.inspect == 'sparsity':
+            utils.inspect_sparsity(session, m, config, vocab, saver)
         else:
             steps = 0
             for i in xrange(config.max_epoch):

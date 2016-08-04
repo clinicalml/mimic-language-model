@@ -45,7 +45,7 @@ def l1_norm(tensor):
     return tf.reduce_sum(tf.abs(tensor))
 
 
-def inspect_feature(feat, embedding, config, vocab, verbose=False, graph=True):
+def inspect_feature_sparsity(feat, embedding, config, vocab, verbose=False, graph=True):
     print '\n\n' + feat + '\n'
     vocab_size, dims = embedding.shape
     if verbose and vocab_size < 10 and dims < 10:
@@ -66,7 +66,7 @@ def inspect_feature(feat, embedding, config, vocab, verbose=False, graph=True):
         plt.show()
 
 
-def inspect(session, m, config, vocab, saver):
+def inspect_sparsity(session, m, config, vocab, saver):
     with tf.device("/cpu:0") and tf.variable_scope("model", reuse=True):
         for i, (feat, dims) in enumerate(config.mimic_embeddings.items()):
             if dims <= 0: continue
@@ -81,4 +81,4 @@ def inspect(session, m, config, vocab, saver):
                 embedding = tf.get_variable("struct_embedding."+feat, [vocab_dims,
                                                                     config.mimic_embeddings[feat]],
                                            initializer=tf.truncated_normal_initializer(stddev=0.1))
-                inspect_feature(feat, embedding.eval(), config, vocab)
+                inspect_feature_sparsity(feat, embedding.eval(), config, vocab)
