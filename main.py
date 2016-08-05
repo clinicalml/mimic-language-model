@@ -264,9 +264,13 @@ class LMModel(object):
                                           initializer=tf.contrib.layers.xavier_initializer())
                 gate2_b = tf.get_variable("struct_gate2_b", [config.hidden_size],
                                           initializer=tf.zeros_initializer)
-                gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(gate, gate2_w, name='gate2_transform'),
-                                                 gate2_b))
-                context += gate * structured_inputs
+                self.gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(gate, gate2_w,
+                                                                name='gate2_transform'),
+                                                      gate2_b))
+                if not config.switch:
+                    context += self.gate * structured_inputs
+                else:
+                    context = ((1.0 - self.gate) * context) + (self.gate * structured_inputs)
 
             postgate_w = tf.get_variable("postgate_w", [config.hidden_size, config.hidden_size],
                                          initializer=tf.contrib.layers.xavier_initializer())
@@ -401,17 +405,17 @@ def call_session(session, m, config, vocab, zero_state, batch, profile_kwargs):
         ret = session.run([m.perplexity, m.cost, m.train_op], f_dict, **profile_kwargs)
 
     #inspect before returning
-    if config.inspect == 'struct':
+    if config.conditional and config.inspect == 'struct':
         feats = m.struct_enable.keys()
         losses = [[] for _ in xrange(config.batch_size)]
-        loss = session.run([m.loss], f_dict)[0]
+        loss, gate = session.run([m.loss, m.gate], f_dict)
         for i in xrange(config.batch_size):
-            losses[i].append((loss[i], 'all'))
+            losses[i].append((loss[i], 'all', gate[i]))
         for v in m.struct_enable.values():
             f_dict[v] = 0.0
-        loss = session.run([m.loss], f_dict)[0]
+        loss, gate = session.run([m.loss, m.gate], f_dict)
         for i in xrange(config.batch_size):
-            losses[i].append((loss[i], 'none'))
+            losses[i].append((loss[i], 'none', gate[i]))
         for only in [True, False]:
             for feat in feats:
                 for v in m.struct_enable.values():
@@ -427,9 +431,9 @@ def call_session(session, m, config, vocab, zero_state, batch, profile_kwargs):
                     s = 'only_'
                 else:
                     s = 'no_'
-                loss = session.run([m.loss], f_dict)[0]
+                loss, gate = session.run([m.loss, m.gate], f_dict)
                 for i in xrange(config.batch_size):
-                    losses[i].append((loss[i], s+feat))
+                    losses[i].append((loss[i], s+feat, gate[i]))
         utils.inspect_losses(x, y, config, vocab, losses)
 
     return ret

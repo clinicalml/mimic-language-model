@@ -56,14 +56,15 @@ def inspect_losses(xs, ys, config, vocab, losses):
             print vocab.vocab_list[x[i]],
         print_color(']', Colors.HEADER)
         print
-        for k, v in loss:
-            print ("%.3f:" % k),
+        for k, v, g in loss:
+            print ("perp %.5f, prob %.5f:" % (np.exp(k), np.exp(-k))),
             if v == 'all': color = Colors.OKGREEN
             elif v == 'none': color = Colors.FAIL
             elif v.startswith('only_'): color = Colors.OKBLUE
             else: color = Colors.WARNING
-            print_color(v, color)
-            print
+            print_color(v.ljust(20), color)
+            print 'gate min %.6f, max %.6f, avg %.6f, std %.6f' % (np.min(g), np.max(g),
+                                                                    np.mean(g), np.std(g))
         print
 
 
