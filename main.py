@@ -271,6 +271,8 @@ class LMModel(object):
                     context = ((1.0 - self.gate) * context) + (self.gate * structured_inputs)
                 else:
                     context += self.gate * structured_inputs
+            else:
+                context = tf.nn.relu(context)
 
             postgate_w = tf.get_variable("postgate_w", [config.hidden_size, config.hidden_size],
                                          initializer=tf.contrib.layers.xavier_initializer())
@@ -347,7 +349,17 @@ class LMModel(object):
 
         structured_inputs = None
         if config.conditional:
-            structured_inputs, struct_l1 = self.struct_embeddings(config, vocab)
+            fake = config.fake_struct
+            if fake != 'none':
+                emb_size = sum(config.mimic_embeddings.values())
+                if fake == 'random':
+                    structured_inputs = tf.truncated_normal([config.batch_size, emb_size])
+                    struct_l1 = tf.abs(tf.truncated_normal([], stddev=100.0))
+                else: # zeros
+                    structured_inputs = tf.constant(0.0, shape=[config.batch_size, emb_size])
+                    struct_l1 = tf.constant(0.0)
+            else:
+                structured_inputs, struct_l1 = self.struct_embeddings(config, vocab)
 
         if config.recurrent:
             outputs, self.final_state, nocond_outputs = self.rnn(inputs, structured_inputs, cell,

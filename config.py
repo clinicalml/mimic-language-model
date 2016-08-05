@@ -35,6 +35,7 @@ flags.DEFINE_bool   ("pretrained_emb",   False,   "Use pretrained embeddings")
 flags.DEFINE_bool   ("conditional",      True,    "Use a conditional language model")
 flags.DEFINE_bool   ("training",         True,    "Training mode, turn off for testing")
 flags.DEFINE_bool   ("force_trainset",   False,   "Force training set even for testing")
+flags.DEFINE_string ("fake_struct",      'none',  "Fake structured data (none, zeros, random)")
 flags.DEFINE_string ("inspect",          'none',  "Inspect the loaded/new model (none, " \
                                                   "sparsity, struct)")
 flags.DEFINE_bool   ("profile",          True,    "Do profiling on first batch")
