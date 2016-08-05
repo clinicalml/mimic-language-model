@@ -19,7 +19,7 @@ flags.DEFINE_integer("context_size",     4,       "Context size for CBOW")
 flags.DEFINE_integer("hidden_size",      200,     "Hidden state size")
 flags.DEFINE_integer("word_emb_size",    250,     "Number of learnable dimensions in word " \
                                                   "embeddings")
-flags.DEFINE_bool   ("switch",           False,   "Use a switch between context and structured " \
+flags.DEFINE_bool   ("switch",           True,    "Use a switch between context and structured " \
                                                   "info")
 flags.DEFINE_float  ("struct_l1_weight", 1.0,     "Weight for minimizing L1-norm of structured " \
                                                   "embeddings")
