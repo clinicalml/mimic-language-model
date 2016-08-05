@@ -40,10 +40,13 @@ def subset(seq, k):
                 yield number
                 numbersPicked += 1
 
-# TODO add L2, this is for a quick exp
+
 def l1_norm(tensor):
+    return tf.reduce_sum(tf.abs(tensor))
+
+
+def l2_norm(tensor):
     return tf.sqrt(tf.reduce_sum(tf.mul(tensor, tensor)))
-#    return tf.reduce_sum(tf.abs(tensor))
 
 
 def inspect_losses(xs, ys, config, vocab, losses):

@@ -80,6 +80,7 @@ class LMModel(object):
         emb_list = []
         with tf.device("/cpu:0"):
             l1_norm = tf.zeros([])
+            l2_norm = tf.zeros([])
         for i, (feat, dims) in enumerate(config.mimic_embeddings.items()):
             if dims <= 0: continue
             try:
@@ -94,6 +95,7 @@ class LMModel(object):
                                                                     config.mimic_embeddings[feat]],
                                            initializer=tf.truncated_normal_initializer(stddev=0.1))
                 l1_norm += utils.l1_norm(embedding)
+                l2_norm += utils.l2_norm(embedding)
                 if feat in config.var_len_features:
                     embedding = tf.concat(0, [tf.zeros([1, config.mimic_embeddings[feat]]),
                                               embedding], name='struct_concat.'+feat)
@@ -119,7 +121,7 @@ class LMModel(object):
                                                 name='struct_dropout_fixlen.'+feat)
             emb_list.append(reduced)
 
-        return tf.concat(1, emb_list), l1_norm
+        return tf.concat(1, emb_list), l1_norm, l2_norm
 
 
     def rnn(self, inputs, structured_inputs, cell, config):
@@ -355,11 +357,13 @@ class LMModel(object):
                 if fake == 'random':
                     structured_inputs = tf.truncated_normal([config.batch_size, emb_size])
                     struct_l1 = tf.abs(tf.truncated_normal([], stddev=100.0))
+                    struct_l2 = tf.abs(tf.truncated_normal([], stddev=100.0))
                 else: # zeros
                     structured_inputs = tf.constant(0.0, shape=[config.batch_size, emb_size])
                     struct_l1 = tf.constant(0.0)
+                    struct_l2 = tf.constant(0.0)
             else:
-                structured_inputs, struct_l1 = self.struct_embeddings(config, vocab)
+                structured_inputs, struct_l1, struct_l2 = self.struct_embeddings(config, vocab)
 
         if config.recurrent:
             outputs, self.final_state, nocond_outputs = self.rnn(inputs, structured_inputs, cell,
@@ -376,6 +380,7 @@ class LMModel(object):
         self.additional = tf.zeros([])
         if config.conditional:
             self.additional += config.struct_l1_weight * struct_l1
+            self.additional += config.struct_l2_weight * struct_l2
         self.cost = self.perplexity + self.additional
         if config.training:
             self.train_op = self.train(config)

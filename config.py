@@ -21,7 +21,9 @@ flags.DEFINE_integer("word_emb_size",    250,     "Number of learnable dimension
                                                   "embeddings")
 flags.DEFINE_bool   ("switch",           True,    "Use a switch between context and structured " \
                                                   "info")
-flags.DEFINE_float  ("struct_l1_weight", 1.0,     "Weight for minimizing L1-norm of structured " \
+flags.DEFINE_float  ("struct_l1_weight", 0.0,     "Weight for minimizing L1-norm of structured " \
+                                                  "embeddings")
+flags.DEFINE_float  ("struct_l2_weight", 1.0,     "Weight for minimizing L2-norm of structured " \
                                                   "embeddings")
 flags.DEFINE_integer("max_steps",        9999999, "Maximum number of steps to run for")
 flags.DEFINE_integer("max_epoch",        6,       "Maximum number of epochs to run for")
