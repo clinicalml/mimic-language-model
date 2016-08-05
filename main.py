@@ -267,10 +267,10 @@ class LMModel(object):
                 self.gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(gate, gate2_w,
                                                                 name='gate2_transform'),
                                                       gate2_b))
-                if not config.switch:
-                    context += self.gate * structured_inputs
-                else:
+                if config.switch:
                     context = ((1.0 - self.gate) * context) + (self.gate * structured_inputs)
+                else:
+                    context += self.gate * structured_inputs
 
             postgate_w = tf.get_variable("postgate_w", [config.hidden_size, config.hidden_size],
                                          initializer=tf.contrib.layers.xavier_initializer())
