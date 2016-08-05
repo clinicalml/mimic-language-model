@@ -356,14 +356,15 @@ class LMModel(object):
                 emb_size = sum(config.mimic_embeddings.values())
                 if fake == 'random':
                     structured_inputs = tf.truncated_normal([config.batch_size, emb_size])
-                    struct_l1 = tf.abs(tf.truncated_normal([], stddev=100.0))
-                    struct_l2 = tf.abs(tf.truncated_normal([], stddev=100.0))
+                    self.struct_l1 = tf.abs(tf.truncated_normal([], stddev=100.0))
+                    self.struct_l2 = tf.abs(tf.truncated_normal([], stddev=100.0))
                 else: # zeros
                     structured_inputs = tf.constant(0.0, shape=[config.batch_size, emb_size])
-                    struct_l1 = tf.constant(0.0)
-                    struct_l2 = tf.constant(0.0)
+                    self.struct_l1 = tf.constant(0.0)
+                    self.struct_l2 = tf.constant(0.0)
             else:
-                structured_inputs, struct_l1, struct_l2 = self.struct_embeddings(config, vocab)
+                structured_inputs, self.struct_l1, self.struct_l2 = self.struct_embeddings(config,
+                                                                                           vocab)
 
         if config.recurrent:
             outputs, self.final_state, nocond_outputs = self.rnn(inputs, structured_inputs, cell,
@@ -379,8 +380,8 @@ class LMModel(object):
         self.perplexity = tf.reduce_sum(self.loss) / config.batch_size
         self.additional = tf.zeros([])
         if config.conditional:
-            self.additional += config.struct_l1_weight * struct_l1
-            self.additional += config.struct_l2_weight * struct_l2
+            self.additional += config.struct_l1_weight * self.struct_l1
+            self.additional += config.struct_l2_weight * self.struct_l2
         self.cost = self.perplexity + self.additional
         if config.training:
             self.train_op = self.train(config)
@@ -416,10 +417,11 @@ def call_session(session, m, config, vocab, zero_state, batch, profile_kwargs):
             for v in m.struct_enable.values():
                 f_dict[v] = 1.0
     if config.recurrent:
-        ret = session.run([m.perplexity, m.cost, m.final_state, m.train_op], f_dict,
-                           **profile_kwargs)
+        ret = session.run([m.perplexity, m.struct_l1, m.struct_l2, m.cost, m.final_state,
+                           m.train_op], f_dict, **profile_kwargs)
     else:
-        ret = session.run([m.perplexity, m.cost, m.train_op], f_dict, **profile_kwargs)
+        ret = session.run([m.perplexity, m.struct_l1, m.struct_l2, m.cost, m.train_op], f_dict,
+                          **profile_kwargs)
 
     #inspect before returning
     if config.conditional and config.inspect == 'struct':
@@ -463,6 +465,8 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
     costs = 0.0
     iters = 0
     shortterm_perps = 0.0
+    shortterm_l1s = 0.0
+    shortterm_l2s = 0.0
     shortterm_costs = 0.0
     shortterm_iters = 0
     batches = 0
@@ -475,10 +479,11 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
             profile_kwargs['run_metadata'] = run_metadata
 
         if config.recurrent:
-            perp, cost, state, _ = call_session(session, m, config, vocab, zero_state, batch,
-                                                profile_kwargs)
+            perp, l1, l2, cost, state, _ = call_session(session, m, config, vocab, zero_state,
+                                                        batch, profile_kwargs)
         else:
-            perp, cost, _ = call_session(session, m, config, vocab, None, batch, profile_kwargs)
+            perp, l1, l2, cost, _ = call_session(session, m, config, vocab, None, batch,
+                                                 profile_kwargs)
 
         if config.profile:
             tl = timeline.Timeline(run_metadata.step_stats)
@@ -490,6 +495,8 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
         perps += perp
         costs += cost
         shortterm_perps += perp
+        shortterm_l1s += l1
+        shortterm_l2s += l2
         shortterm_costs += cost
         if config.recurrent:
             iters += config.num_steps
@@ -499,17 +506,25 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
             shortterm_iters += 1
 
         if verbose and step % config.print_every == 0:
+            avg_perp = shortterm_perps / shortterm_iters
+            avg_l1 = shortterm_l1s / shortterm_iters
+            avg_l2 = shortterm_l2s / shortterm_iters
+            avg_cost = shortterm_costs / shortterm_iters
             if config.recurrent:
-                print("%d  perplexity: %.3f  cost: %.3f  speed: %.0f wps" %
-                      (step, np.exp(shortterm_perps / shortterm_iters), shortterm_costs / shortterm_iters,
+                print("%d  perplexity: %.3f  ml_loss: %.5f  struct_l1: %.6f  struct_l2: %.6f  " \
+                      "cost: %.4f  speed: %.0f wps" %
+                      (step, np.exp(avg_perp), avg_perp, avg_l1, avg_l2, avg_cost,
                        shortterm_iters * config.batch_size / (time.time() - start_time)))
             else:
-                print("%d  perplexity: %.3f  cost: %.3f  speed: %.0f wps  %.0f pps" %
-                      (step, np.exp(shortterm_perps / shortterm_iters), shortterm_costs / shortterm_iters,
+                print("%d  perplexity: %.3f  ml_loss: %.5f  struct_l1: %.6f  struct_l2: %.6f  " \
+                      "cost: %.4f  speed: %.0f wps %.0f pps" %
+                      (step, np.exp(avg_perp), avg_perp, avg_l1, avg_l2, avg_cost,
                        shortterm_iters * config.num_steps * config.batch_size / (time.time() - \
                                                                                  start_time),
                        shortterm_iters * config.batch_size / (time.time() - start_time)))
             shortterm_perps = 0.0
+            shortterm_l1s = 0.0
+            shortterm_l2s = 0.0
             shortterm_costs = 0.0
             shortterm_iters = 0
             start_time = time.time()
