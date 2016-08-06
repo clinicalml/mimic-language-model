@@ -396,7 +396,9 @@ class LMModel(object):
         else:
             optimizer = tf.train.GradientDescentOptimizer(self.lr)
         tvars = tf.trainable_variables()
-        grads, _ = tf.clip_by_global_norm(tf.gradients(self.cost, tvars), config.max_grad_norm)
+        grads = tf.gradients(self.cost, tvars)
+        if config.max_grad_norm > 0:
+            grads, _ = tf.clip_by_global_norm(grads, config.max_grad_norm)
         return optimizer.apply_gradients(zip(grads, tvars))
 
 
