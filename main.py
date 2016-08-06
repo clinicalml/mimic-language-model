@@ -391,10 +391,14 @@ class LMModel(object):
 
     def train(self, config):
         self.lr = tf.Variable(0.0, trainable=False)
-        if config.use_adam:
-            optimizer = tf.train.AdamOptimizer(self.lr)
-        else:
+        if config.optimizer == 'sgd':
             optimizer = tf.train.GradientDescentOptimizer(self.lr)
+        elif config.optimizer == 'adam':
+            optimizer = tf.train.AdamOptimizer(self.lr)
+        elif config.optimizer == 'adagrad':
+            optimizer = tf.train.AdagradOptimizer(self.lr)
+        elif config.optimizer == 'adadelta':
+            optimizer = tf.train.AdadeltaOptimizer(self.lr)
         tvars = tf.trainable_variables()
         grads = tf.gradients(self.cost, tvars)
         if config.max_grad_norm > 0:

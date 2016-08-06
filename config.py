@@ -34,7 +34,8 @@ flags.DEFINE_integer("save_every",       10000,   "Save every these many steps")
 flags.DEFINE_bool   ("pretrained_emb",   False,   "Use pretrained embeddings")
 flags.DEFINE_bool   ("conditional",      True,    "Use a conditional language model")
 flags.DEFINE_bool   ("training",         True,    "Training mode, turn off for testing")
-flags.DEFINE_bool   ("use_adam",         True,    "Use the ADAM optimizer instead of SGD")
+flags.DEFINE_string ("optimizer",        'adam',  "Optimizer to use (sgd, adam, adagrad, " \
+                                                  "adadelta)")
 flags.DEFINE_bool   ("force_trainset",   False,   "Force training set even for testing")
 flags.DEFINE_string ("fake_struct",      'none',  "Fake structured data (none, zeros, random)")
 flags.DEFINE_string ("inspect",          'none',  "Inspect the loaded/new model (none, " \
