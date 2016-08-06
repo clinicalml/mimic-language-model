@@ -252,17 +252,12 @@ class LMModel(object):
                 if config.training and config.keep_prob < 1:
                     structured_inputs = tf.nn.dropout(structured_inputs, config.keep_prob)
 
-                if config.context_gate:
-                    concat = context
-                    insize = config.hidden_size
-                else:
-                    concat = tf.concat(1, [context, structured_inputs], name='gate_concat')
-                    insize = config.hidden_size * 2
-                gate1_w = tf.get_variable("struct_gate1_w", [insize, config.hidden_size],
+                gate1_w = tf.get_variable("struct_gate1_w", [config.hidden_size,
+                                                             config.hidden_size],
                                           initializer=tf.contrib.layers.xavier_initializer())
                 gate1_b = tf.get_variable("struct_gate1_b", [config.hidden_size],
                                           initializer=tf.ones_initializer)
-                gate = tf.nn.relu(tf.nn.bias_add(tf.matmul(concat, gate1_w,
+                gate = tf.nn.relu(tf.nn.bias_add(tf.matmul(context, gate1_w,
                                                            name='gate_transform1'), gate1_b))
 
                 gate2_w = tf.get_variable("struct_gate2_w",
