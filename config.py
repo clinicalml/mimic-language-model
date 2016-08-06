@@ -15,7 +15,7 @@ flags.DEFINE_float  ("learning_rate",    1e-3,    "ADAM learning rate")
 flags.DEFINE_float  ("max_grad_norm",    5,       "Gradient clipping")
 flags.DEFINE_integer("num_layers",       2,       "Number of LSTM layers")
 flags.DEFINE_integer("num_steps",        20,      "Number of steps to unroll for RNNs")
-flags.DEFINE_integer("context_size",     4,       "Context size for CBOW")
+flags.DEFINE_integer("context_size",     6,       "Context size for CBOW")
 flags.DEFINE_integer("hidden_size",      200,     "Hidden state size")
 flags.DEFINE_integer("word_emb_size",    250,     "Number of learnable dimensions in word " \
                                                   "embeddings")
