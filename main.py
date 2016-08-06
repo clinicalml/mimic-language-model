@@ -391,7 +391,10 @@ class LMModel(object):
 
     def train(self, config):
         self.lr = tf.Variable(0.0, trainable=False)
-        optimizer = tf.train.AdamOptimizer(self.lr)
+        if config.use_adam:
+            optimizer = tf.train.AdamOptimizer(self.lr)
+        else:
+            optimizer = tf.train.GradientDescentOptimizer(self.lr)
         tvars = tf.trainable_variables()
         grads, _ = tf.clip_by_global_norm(tf.gradients(self.cost, tvars), config.max_grad_norm)
         return optimizer.apply_gradients(zip(grads, tvars))
