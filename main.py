@@ -361,6 +361,9 @@ class LMModel(object):
             else:
                 structured_inputs, self.struct_l1, self.struct_l2 = self.struct_embeddings(config,
                                                                                            vocab)
+        else:
+            self.struct_l1 = tf.constant(0.0)
+            self.struct_l2 = tf.constant(0.0)
 
         if config.recurrent:
             outputs, self.final_state, nocond_outputs = self.rnn(inputs, structured_inputs, cell,
