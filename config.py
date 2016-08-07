@@ -11,7 +11,7 @@ flags.DEFINE_string ("timeline_file",    "timeline.json",     "File to save prof
                                                               "information to")
 flags.DEFINE_string ("load_file",        "",                  "File to load model from")
 
-flags.DEFINE_float  ("learning_rate",    1e-3,    "ADAM learning rate")
+flags.DEFINE_float  ("learning_rate",    1e-4,    "Optimizer learning rate")
 flags.DEFINE_float  ("max_grad_norm",    5,       "Gradient clipping")
 flags.DEFINE_integer("num_layers",       2,       "Number of LSTM layers")
 flags.DEFINE_integer("num_steps",        20,      "Number of steps to unroll for RNNs")
