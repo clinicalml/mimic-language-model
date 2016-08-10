@@ -67,6 +67,7 @@ class LMModel(object):
             embedding = tf.get_variable("word_embedding", [config.vocab_size,
                                                            config.word_emb_size],
                                         initializer=tf.contrib.layers.xavier_initializer())
+            self.word_embedding = embedding
             if config.pretrained_emb:
                 cembedding = tf.constant(vocab.embeddings, dtype=embedding.dtype,
                                          name="pre_word_embedding")
@@ -81,6 +82,7 @@ class LMModel(object):
         with tf.device("/cpu:0"):
             l1_norm = tf.zeros([])
             l2_norm = tf.zeros([])
+        self.struct_embeddings = []
         for i, (feat, dims) in enumerate(config.mimic_embeddings.items()):
             if dims <= 0: continue
             try:
@@ -94,6 +96,7 @@ class LMModel(object):
                 embedding = tf.get_variable("struct_embedding."+feat, [vocab_dims,
                                                                     config.mimic_embeddings[feat]],
                                            initializer=tf.truncated_normal_initializer(stddev=0.1))
+                self.struct_embeddings.append(embedding)
                 l1_norm += utils.l1_norm(embedding)
                 l2_norm += utils.l2_norm(embedding)
                 if feat in config.var_len_features:
@@ -606,6 +609,21 @@ def main(_):
             else:
                 print "You need to provide a valid model file for testing!"
                 sys.exit(1)
+
+        if not config.struct_only:
+            emb_saver = tf.train.Saver([m.word_embedding])
+            try:
+                emb_saver.restore(session, config.load_emb_file)
+                print "Word embeddings restored from", config.load_emb_file
+            except ValueError:
+                pass
+        if config.conditional:
+            struct_saver = tf.train.Saver(m.struct_embeddings)
+            try:
+                struct_saver.restore(session, config.load_struct_file)
+                print "Structured embeddings restored from", config.load_struct_file
+            except ValueError:
+                pass
 
         if config.inspect == 'sparsity':
             utils.inspect_sparsity(session, m, config, vocab, saver)

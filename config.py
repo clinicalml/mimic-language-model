@@ -10,6 +10,9 @@ flags.DEFINE_string ("save_file",        "models/recent.dat", "Save file")
 flags.DEFINE_string ("timeline_file",    "timeline.json",     "File to save profiling " \
                                                               "information to")
 flags.DEFINE_string ("load_file",        "",                  "File to load model from")
+flags.DEFINE_string ("load_struct_file", "",                  "File to load structured " \
+                                                              "embeddings from")
+flags.DEFINE_string ("load_emb_file",    "",                  "File to load word embeddings from")
 
 flags.DEFINE_float  ("learning_rate",    1e-4,    "Optimizer learning rate")
 flags.DEFINE_float  ("max_grad_norm",    5,       "Gradient clipping")
