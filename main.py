@@ -240,6 +240,8 @@ class LMModel(object):
                 if config.training and config.keep_prob < 1:
                     context = tf.nn.dropout(context, config.keep_prob)
 
+            self.gate_mean = tf.constant(0.0)
+            self.gate_var = tf.constant(0.0)
             if config.conditional:
                 transform1_w = tf.get_variable("struct_transform1_w", [emb_size,
                                                                        config.hidden_size],
@@ -283,8 +285,6 @@ class LMModel(object):
                     self.gate_mean, self.gate_var = tf.nn.moments(self.gate, [0, 1])
                     context = (self.gate * context) + ((1.0 - self.gate) * structured_inputs)
                 else:
-                    self.gate_mean = tf.constant(0.0)
-                    self.gate_var = tf.constant(0.0)
                     context = tf.nn.relu(structured_inputs)
             else:
                 context = tf.nn.relu(context)
