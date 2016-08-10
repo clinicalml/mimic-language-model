@@ -89,10 +89,11 @@ def _mimic_iterator_unbuffered(config, vocab):
             indices = range(batch_len)
             random.shuffle(indices)
 
-            raw_data = [[] for _ in range(pad_count)] + raw_data
-            grouped_raw_data = [group for group in utils.grouper(config.batch_size, raw_data)]
-            grouped_raw_data = [grouped_raw_data[i] for i in indices]
-            raw_data = [note for group in grouped_raw_data for note in group]
+            if not config.struct_only:
+                raw_data = [[] for _ in range(pad_count)] + raw_data
+                grouped_raw_data = [group for group in utils.grouper(config.batch_size, raw_data)]
+                grouped_raw_data = [grouped_raw_data[i] for i in indices]
+                raw_data = [note for group in grouped_raw_data for note in group]
             if config.conditional:
                 for k, v in raw_aux_data.items():
                     if k in config.fixed_len_features:
@@ -148,7 +149,11 @@ def _mimic_iterator_unbuffered(config, vocab):
                 new_batch = True
                 epochs = range(epoch_size)
                 if not config.recurrent:
-                    epochs = [e for e in utils.subset(epochs, config.samples_per_note)]
+                    if config.struct_only:
+                        samples = 1
+                    else:
+                        samples = config.samples_per_note
+                    epochs = [e for e in utils.subset(epochs, samples)]
                 for i in epochs:
                     if config.recurrent:
                         x = data[:, i*config.num_steps:(i+1)*config.num_steps]

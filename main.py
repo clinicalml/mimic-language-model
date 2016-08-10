@@ -197,37 +197,45 @@ class LMModel(object):
 
 
     def ff(self, inputs, structured_inputs, config):
-        word_emb_size = inputs.get_shape()[2]
-        emb_size = sum(config.mimic_embeddings.values())
-        assert word_emb_size >= config.hidden_size
-        assert emb_size >= config.hidden_size
+        if not config.struct_only:
+            word_emb_size = inputs.get_shape()[2]
+            assert word_emb_size >= config.hidden_size
+        if config.conditional:
+            emb_size = sum(config.mimic_embeddings.values())
+            assert emb_size >= config.hidden_size
 
         with tf.variable_scope("FF"):
-            words = []
-            for i in range(config.num_steps):
-                words.append(tf.squeeze(tf.slice(inputs, [0,i,0], [-1,1,-1], name='word_slice'),
-                                        [1], name='word_squeeze'))
-            context = tf.nn.relu(sum(words))
+            if not config.struct_only:
+                words = []
+                for i in range(config.num_steps):
+                    words.append(tf.squeeze(tf.slice(inputs, [0,i,0], [-1,1,-1],
+                                                     name='word_slice'),
+                                            [1], name='word_squeeze'))
+                context = tf.nn.relu(sum(words))
 
-            context_transform1_w = tf.get_variable("context_transform1_w", [word_emb_size,
-                                                                            config.hidden_size],
+                context_transform1_w = tf.get_variable("context_transform1_w",
+                                                       [word_emb_size, config.hidden_size],
                                                 initializer=tf.contrib.layers.xavier_initializer())
-            context_transform1_b = tf.get_variable("context_transform1_b", [config.hidden_size],
-                                                   initializer=tf.ones_initializer)
-            context = tf.nn.bias_add(tf.matmul(context, context_transform1_w,
-                                               name='context_transform1'), context_transform1_b)
-            context = tf.nn.relu(context)
+                context_transform1_b = tf.get_variable("context_transform1_b",
+                                                       [config.hidden_size],
+                                                       initializer=tf.ones_initializer)
+                context = tf.nn.bias_add(tf.matmul(context, context_transform1_w,
+                                                   name='context_transform1'),
+                                         context_transform1_b)
+                context = tf.nn.relu(context)
 
-            context_transform2_w = tf.get_variable("context_transform2_w", [config.hidden_size,
-                                                                            config.hidden_size],
+                context_transform2_w = tf.get_variable("context_transform2_w",
+                                                       [config.hidden_size, config.hidden_size],
                                                 initializer=tf.contrib.layers.xavier_initializer())
-            context_transform2_b = tf.get_variable("context_transform2_b", [config.hidden_size],
-                                                   initializer=tf.ones_initializer)
-            context = tf.nn.bias_add(tf.matmul(context, context_transform2_w,
-                                               name='context_transform2'), context_transform2_b)
+                context_transform2_b = tf.get_variable("context_transform2_b",
+                                                       [config.hidden_size],
+                                                       initializer=tf.ones_initializer)
+                context = tf.nn.bias_add(tf.matmul(context, context_transform2_w,
+                                                   name='context_transform2'),
+                                         context_transform2_b)
 
-            if config.training and config.keep_prob < 1:
-                context = tf.nn.dropout(context, config.keep_prob)
+                if config.training and config.keep_prob < 1:
+                    context = tf.nn.dropout(context, config.keep_prob)
 
             if config.conditional:
                 transform1_w = tf.get_variable("struct_transform1_w", [emb_size,
@@ -252,23 +260,28 @@ class LMModel(object):
                 if config.training and config.keep_prob < 1:
                     structured_inputs = tf.nn.dropout(structured_inputs, config.keep_prob)
 
-                gate1_w = tf.get_variable("struct_gate1_w", [config.hidden_size,
-                                                             config.hidden_size],
-                                          initializer=tf.contrib.layers.xavier_initializer())
-                gate1_b = tf.get_variable("struct_gate1_b", [config.hidden_size],
-                                          initializer=tf.ones_initializer)
-                gate = tf.nn.relu(tf.nn.bias_add(tf.matmul(context, gate1_w,
-                                                           name='gate_transform1'), gate1_b))
+                if not config.struct_only:
+                    gate1_w = tf.get_variable("struct_gate1_w", [config.hidden_size,
+                                                                 config.hidden_size],
+                                              initializer=tf.contrib.layers.xavier_initializer())
+                    gate1_b = tf.get_variable("struct_gate1_b", [config.hidden_size],
+                                              initializer=tf.ones_initializer)
+                    gate = tf.nn.relu(tf.nn.bias_add(tf.matmul(context, gate1_w,
+                                                               name='gate_transform1'), gate1_b))
 
-                gate2_w = tf.get_variable("struct_gate2_w",
-                                          [config.hidden_size, config.hidden_size],
-                                          initializer=tf.contrib.layers.xavier_initializer())
-                gate2_b = tf.get_variable("struct_gate2_b", [config.hidden_size],
-                                          initializer=tf.zeros_initializer)
-                self.gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(gate, gate2_w,
-                                                                name='gate2_transform'),
-                                                      gate2_b))
-                context = ((1.0 - self.gate) * context) + (self.gate * structured_inputs)
+                    gate2_w = tf.get_variable("struct_gate2_w",
+                                              [config.hidden_size, config.hidden_size],
+                                              initializer=tf.contrib.layers.xavier_initializer())
+                    gate2_b = tf.get_variable("struct_gate2_b", [config.hidden_size],
+                                             initializer=tf.constant_initializer(config.gate_bias))
+                    self.gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(gate, gate2_w,
+                                                                    name='gate2_transform'),
+                                                          gate2_b))
+                    self.gate_l2 = utils.l2_norm(self.gate)
+                    context = (self.gate * context) + ((1.0 - self.gate) * structured_inputs)
+                else:
+                    self.gate_l2 = tf.constant(0.0)
+                    context = tf.nn.relu(structured_inputs)
             else:
                 context = tf.nn.relu(context)
 
@@ -341,9 +354,12 @@ class LMModel(object):
             cell = self.rnn_cell(config)
             self.initial_state = cell.zero_state(config.batch_size, tf.float32)
 
-        inputs = self.word_embeddings(config, vocab)
-        if config.training and config.keep_prob < 1:
-            inputs = tf.nn.dropout(inputs, config.keep_prob)
+        if not config.struct_only:
+            inputs = self.word_embeddings(config, vocab)
+            if config.training and config.keep_prob < 1:
+                inputs = tf.nn.dropout(inputs, config.keep_prob)
+        else:
+            inputs = None
 
         structured_inputs = None
         if config.conditional:
@@ -428,8 +444,8 @@ def call_session(session, m, config, vocab, zero_state, batch, profile_kwargs):
         ret = session.run([m.perplexity, m.struct_l1, m.struct_l2, m.cost, m.final_state,
                            m.train_op], f_dict, **profile_kwargs)
     else:
-        ret = session.run([m.perplexity, m.struct_l1, m.struct_l2, m.cost, m.train_op], f_dict,
-                          **profile_kwargs)
+        ret = session.run([m.perplexity, m.struct_l1, m.struct_l2, m.gate_l2, m.cost, m.train_op],
+                          f_dict, **profile_kwargs)
 
     #inspect before returning
     if config.conditional and config.inspect == 'struct':
@@ -475,6 +491,7 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
     shortterm_perps = 0.0
     shortterm_l1s = 0.0
     shortterm_l2s = 0.0
+    shortterm_gate_l2s = 0.0
     shortterm_costs = 0.0
     shortterm_iters = 0
     batches = 0
@@ -490,8 +507,8 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
             perp, l1, l2, cost, state, _ = call_session(session, m, config, vocab, zero_state,
                                                         batch, profile_kwargs)
         else:
-            perp, l1, l2, cost, _ = call_session(session, m, config, vocab, None, batch,
-                                                 profile_kwargs)
+            perp, l1, l2, gate_l2, cost, _ = call_session(session, m, config, vocab, None, batch,
+                                                          profile_kwargs)
 
         if config.profile:
             tl = timeline.Timeline(run_metadata.step_stats)
@@ -505,6 +522,7 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
         shortterm_perps += perp
         shortterm_l1s += l1
         shortterm_l2s += l2
+        shortterm_gate_l2s += gate_l2
         shortterm_costs += cost
         if config.recurrent:
             iters += config.num_steps
@@ -517,6 +535,7 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
             avg_perp = shortterm_perps / shortterm_iters
             avg_l1 = shortterm_l1s / shortterm_iters
             avg_l2 = shortterm_l2s / shortterm_iters
+            avg_gate_l2 = shortterm_gate_l2s / shortterm_iters
             avg_cost = shortterm_costs / shortterm_iters
             if config.recurrent:
                 print("%d  perplexity: %.3f  ml_loss: %.5f  struct_l1: %.6f  struct_l2: %.6f  " \
@@ -524,15 +543,16 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
                       (step, np.exp(avg_perp), avg_perp, avg_l1, avg_l2, avg_cost,
                        shortterm_iters * config.batch_size / (time.time() - start_time)))
             else:
-                print("%d  perplexity: %.3f  ml_loss: %.5f  struct_l1: %.6f  struct_l2: %.6f  " \
-                      "cost: %.4f  speed: %.0f wps %.0f pps" %
-                      (step, np.exp(avg_perp), avg_perp, avg_l1, avg_l2, avg_cost,
-                       shortterm_iters * config.num_steps * config.batch_size / (time.time() - \
-                                                                                 start_time),
+                print("%d  perplexity: %.3f  ml_loss: %.4f  struct_l1: %.4f  struct_l2: %.4f  " \
+                      "cost: %.4f  gate_l2: %.4f  speed: %.0f wps %.0f pps" %
+                      (step, np.exp(avg_perp), avg_perp, avg_l1, avg_l2, avg_cost, avg_gate_l2,
+                       shortterm_iters * config.num_steps * config.batch_size / \
+                                                                        (time.time() - start_time),
                        shortterm_iters * config.batch_size / (time.time() - start_time)))
             shortterm_perps = 0.0
             shortterm_l1s = 0.0
             shortterm_l2s = 0.0
+            shortterm_gate_l2s = 0.0
             shortterm_costs = 0.0
             shortterm_iters = 0
             start_time = time.time()

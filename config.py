@@ -28,6 +28,7 @@ flags.DEFINE_integer("max_epoch",        6,       "Maximum number of epochs to r
 flags.DEFINE_integer("softmax_samples",  1000,    "Number of classes to sample for softmax")
 flags.DEFINE_float  ("keep_prob",        1.0,     "Dropout keep probability")
 flags.DEFINE_float  ("struct_keep_prob", 1.0,     "Structural info dropout keep probability")
+flags.DEFINE_float  ("gate_bias",        0.0,     "Initial bias before the gate sigmoid")
 flags.DEFINE_integer("batch_size",       25,      "Batch size")
 flags.DEFINE_integer("print_every",      500,     "Print every these many steps")
 flags.DEFINE_integer("save_every",       10000,   "Save every these many steps")
@@ -42,6 +43,7 @@ flags.DEFINE_string ("inspect",          'none',  "Inspect the loaded/new model 
                                                   "sparsity, struct)")
 flags.DEFINE_bool   ("profile",          False,   "Do profiling on first batch")
 flags.DEFINE_bool   ("recurrent",        False,   "Use a recurrent language model")
+flags.DEFINE_bool   ("struct_only",      False,   "Use a model with only structured data")
 flags.DEFINE_bool   ("use_hsm",          False,   "Use two-level hierarchical softmax")
 flags.DEFINE_integer("data_rand_buffer", 25000,   "Number of buffered CBOW minibatches to " \
                                                   "randomize")
