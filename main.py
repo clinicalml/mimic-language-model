@@ -277,10 +277,11 @@ class LMModel(object):
                     self.gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(gate, gate2_w,
                                                                     name='gate2_transform'),
                                                           gate2_b))
-                    self.gate_l2 = utils.l2_norm(self.gate)
+                    self.gate_mean, self.gate_var = tf.nn.moments(self.gate, [0, 1])
                     context = (self.gate * context) + ((1.0 - self.gate) * structured_inputs)
                 else:
-                    self.gate_l2 = tf.constant(0.0)
+                    self.gate_mean = tf.constant(0.0)
+                    self.gate_var = tf.constant(0.0)
                     context = tf.nn.relu(structured_inputs)
             else:
                 context = tf.nn.relu(context)
@@ -444,8 +445,8 @@ def call_session(session, m, config, vocab, zero_state, batch, profile_kwargs):
         ret = session.run([m.perplexity, m.struct_l1, m.struct_l2, m.cost, m.final_state,
                            m.train_op], f_dict, **profile_kwargs)
     else:
-        ret = session.run([m.perplexity, m.struct_l1, m.struct_l2, m.gate_l2, m.cost, m.train_op],
-                          f_dict, **profile_kwargs)
+        ret = session.run([m.perplexity, m.struct_l1, m.struct_l2, m.gate_mean, m.gate_var, m.cost,
+                           m.train_op], f_dict, **profile_kwargs)
 
     #inspect before returning
     if config.conditional and config.inspect == 'struct':
@@ -491,7 +492,8 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
     shortterm_perps = 0.0
     shortterm_l1s = 0.0
     shortterm_l2s = 0.0
-    shortterm_gate_l2s = 0.0
+    shortterm_gate_means = 0.0
+    shortterm_gate_vars = 0.0
     shortterm_costs = 0.0
     shortterm_iters = 0
     batches = 0
@@ -507,8 +509,8 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
             perp, l1, l2, cost, state, _ = call_session(session, m, config, vocab, zero_state,
                                                         batch, profile_kwargs)
         else:
-            perp, l1, l2, gate_l2, cost, _ = call_session(session, m, config, vocab, None, batch,
-                                                          profile_kwargs)
+            perp, l1, l2, gate_mean, gate_var, cost, _ = call_session(session, m, config, vocab,
+                                                                      None, batch, profile_kwargs)
 
         if config.profile:
             tl = timeline.Timeline(run_metadata.step_stats)
@@ -522,7 +524,8 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
         shortterm_perps += perp
         shortterm_l1s += l1
         shortterm_l2s += l2
-        shortterm_gate_l2s += gate_l2
+        shortterm_gate_means += gate_mean
+        shortterm_gate_vars += gate_var
         shortterm_costs += cost
         if config.recurrent:
             iters += config.num_steps
@@ -535,7 +538,8 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
             avg_perp = shortterm_perps / shortterm_iters
             avg_l1 = shortterm_l1s / shortterm_iters
             avg_l2 = shortterm_l2s / shortterm_iters
-            avg_gate_l2 = shortterm_gate_l2s / shortterm_iters
+            avg_gate_mean = shortterm_gate_means / shortterm_iters
+            avg_gate_var = shortterm_gate_vars / shortterm_iters
             avg_cost = shortterm_costs / shortterm_iters
             if config.recurrent:
                 print("%d  perplexity: %.3f  ml_loss: %.5f  struct_l1: %.6f  struct_l2: %.6f  " \
@@ -544,15 +548,17 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
                        shortterm_iters * config.batch_size / (time.time() - start_time)))
             else:
                 print("%d  perplexity: %.3f  ml_loss: %.4f  struct_l1: %.4f  struct_l2: %.4f  " \
-                      "cost: %.4f  gate_l2: %.4f  speed: %.0f wps %.0f pps" %
-                      (step, np.exp(avg_perp), avg_perp, avg_l1, avg_l2, avg_cost, avg_gate_l2,
-                       shortterm_iters * config.num_steps * config.batch_size / \
-                                                                        (time.time() - start_time),
+                      "cost: %.4f  gate_mean: %.4f  gate_std: %.4f  speed: %.0f wps %.0f pps" %
+                      (step, np.exp(avg_perp), avg_perp, avg_l1, avg_l2, avg_cost, avg_gate_mean,
+                       np.sqrt(avg_gate_var),
+                       shortterm_iters * config.num_steps * config.batch_size / (time.time() - \
+                                                                                 start_time),
                        shortterm_iters * config.batch_size / (time.time() - start_time)))
             shortterm_perps = 0.0
             shortterm_l1s = 0.0
             shortterm_l2s = 0.0
-            shortterm_gate_l2s = 0.0
+            shortterm_gate_means = 0.0
+            shortterm_gate_vars = 0.0
             shortterm_costs = 0.0
             shortterm_iters = 0
             start_time = time.time()
