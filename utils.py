@@ -80,19 +80,22 @@ def inspect_feature_embs(feat, embedding, config, vocab, verbose=False, graph=Tr
 
 def inspect_embs(session, m, config, vocab):
     with tf.device("/cpu:0") and tf.variable_scope("model", reuse=True):
-        for i, (feat, dims) in enumerate(config.mimic_embeddings.items()):
-            if dims <= 0: continue
-            try:
-                vocab_aux = len(vocab.aux_list[feat])
-            except KeyError:
-                vocab_aux = 2 # binary
-            with tf.device("/cpu:0"):
+        if not config.struct_only:
+            word_embeddings = tf.get_variable("word_embedding", [config.vocab_size,
+                                                                 config.word_emb_size])
+            inspect_feature_embs('words', word_embeddings.eval(), config, vocab)
+        if config.conditional:
+            for i, (feat, dims) in enumerate(config.mimic_embeddings.items()):
+                if dims <= 0: continue
+                try:
+                    vocab_aux = len(vocab.aux_list[feat])
+                except KeyError:
+                    vocab_aux = 2 # binary
                 vocab_dims = vocab_aux
                 if feat in config.var_len_features:
                     vocab_dims -= 1
-                embedding = tf.get_variable("struct_embedding."+feat, [vocab_dims,
-                                                                    config.mimic_embeddings[feat]],
-                                           initializer=tf.truncated_normal_initializer(stddev=0.1))
+                embedding = tf.get_variable("struct_embedding."+feat,
+                                            [vocab_dims, config.mimic_embeddings[feat]])
                 inspect_feature_embs(feat, embedding.eval(), config, vocab)
 
 
