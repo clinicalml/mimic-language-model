@@ -625,8 +625,8 @@ def main(_):
             except ValueError:
                 pass
 
-        if config.inspect == 'sparsity':
-            utils.inspect_sparsity(session, m, config, vocab, saver)
+        if config.inspect == 'embs':
+            utils.inspect_embs(session, m, config, vocab)
         else:
             steps = 0
             for i in xrange(config.max_epoch):

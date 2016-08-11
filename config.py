@@ -42,8 +42,8 @@ flags.DEFINE_string ("optimizer",        'adam',  "Optimizer to use (sgd, adam, 
                                                   "adadelta)")
 flags.DEFINE_bool   ("force_trainset",   False,   "Force training set even for testing")
 flags.DEFINE_string ("fake_struct",      'none',  "Fake structured data (none, zeros, random)")
-flags.DEFINE_string ("inspect",          'none',  "Inspect the loaded/new model (none, " \
-                                                  "sparsity, struct)")
+flags.DEFINE_string ("inspect",          'none',  "Inspect the loaded/new model (none, embs, " \
+                                                  "struct)")
 flags.DEFINE_bool   ("profile",          False,   "Do profiling on first batch")
 flags.DEFINE_bool   ("recurrent",        False,   "Use a recurrent language model")
 flags.DEFINE_bool   ("struct_only",      False,   "Use a model with only structured data")

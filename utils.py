@@ -72,6 +72,31 @@ def inspect_losses(xs, ys, config, vocab, losses):
         print
 
 
+def inspect_feature_embs(feat, embedding, config, vocab, verbose=False, graph=True):
+    print '\n\n' + feat + '\n'
+    vocab_size, dims = embedding.shape
+    pass #TODO
+
+
+def inspect_embs(session, m, config, vocab):
+    with tf.device("/cpu:0") and tf.variable_scope("model", reuse=True):
+        for i, (feat, dims) in enumerate(config.mimic_embeddings.items()):
+            if dims <= 0: continue
+            try:
+                vocab_aux = len(vocab.aux_list[feat])
+            except KeyError:
+                vocab_aux = 2 # binary
+            with tf.device("/cpu:0"):
+                vocab_dims = vocab_aux
+                if feat in config.var_len_features:
+                    vocab_dims -= 1
+                embedding = tf.get_variable("struct_embedding."+feat, [vocab_dims,
+                                                                    config.mimic_embeddings[feat]],
+                                           initializer=tf.truncated_normal_initializer(stddev=0.1))
+                inspect_feature_embs(feat, embedding.eval(), config, vocab)
+
+
+#XXX Unused
 def inspect_feature_sparsity(feat, embedding, config, vocab, verbose=False, graph=True):
     print '\n\n' + feat + '\n'
     vocab_size, dims = embedding.shape
@@ -93,7 +118,8 @@ def inspect_feature_sparsity(feat, embedding, config, vocab, verbose=False, grap
         plt.show()
 
 
-def inspect_sparsity(session, m, config, vocab, saver):
+#XXX Unused
+def inspect_sparsity(session, m, config, vocab):
     with tf.device("/cpu:0") and tf.variable_scope("model", reuse=True):
         for i, (feat, dims) in enumerate(config.mimic_embeddings.items()):
             if dims <= 0: continue
