@@ -76,15 +76,15 @@ def inspect_losses(xs, ys, config, vocab, losses):
         print
 
 
-def inspect_feature_embs(feat, embedding, config, vocab, dicts, fd):
+def inspect_feature_embs(feat, embedding, config, vocab, dicts, fd, topk=2500):
+    shift = 0
     if feat == 'words':
         vocablist = vocab.vocab_list
     elif dicts:
-        shift = 0
         if feat in config.var_len_features:
             shift = 1
         try:
-            vocablist = vocab.aux_list[feat][shift:]
+            vocablist = vocab.aux_list[feat]
         except KeyError:
             return
     else:
@@ -93,11 +93,21 @@ def inspect_feature_embs(feat, embedding, config, vocab, dicts, fd):
     from tsne import bh_sne
     print '\n' + feat
     perp = 10
-    W, H = 110, 110
+    W, H = 90, 90
     if len(vocablist) < 5:
         perp = 1
         W, H = 5, 5
 
+    if feat == 'words':
+        keep = [k for k,v in sorted(fd.items(), key=lambda x: x[1], reverse=True)[:topk]]
+        keep = list(set([vocab.vocab_lookup.get(k, 0) for k in keep]))
+    else:
+        keep = list(set([k for k,v in sorted(fd.items(), key=lambda x: x[1],
+                                                 reverse=True)[:topk]]))
+        keep = [k for k in keep if k >= shift]
+    keep = np.array(keep)
+
+    embedding = embedding[keep-shift]
     embedding = bh_sne(embedding.astype(np.float64), perplexity=perp)
     x = embedding[:, 0]
     y = embedding[:, 1]
@@ -108,19 +118,19 @@ def inspect_feature_embs(feat, embedding, config, vocab, dicts, fd):
     if fd:
         norm = matplotlib.colors.LogNorm(vmin=1, vmax=max(fd.values()))
     z = []
-    for i, txt in enumerate(vocablist):
+    for i in range(len(keep)):
         if fd:
             if feat == 'words':
-                freq = fd.get(txt, None)
+                freq = fd.get(vocablist[keep[i]], None)
             else:
-                # XXX can just use i below. need to think about shift.
-                freq = fd.get(vocab.aux_lookup.get(feat, {}).get(txt, -1), None)
+                freq = fd.get(keep[i], None)
             if freq and freq > 0:
                 freq = norm(freq)
             else:
                 freq = 0.0
         else:
             freq = 1.0
+        txt = vocablist[keep[i]]
         txt = dicts.get(txt, txt)
         z.append(freq)
         color = cmap(max(freq, 0.25))
