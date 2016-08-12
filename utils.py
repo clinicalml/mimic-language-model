@@ -1,6 +1,10 @@
 import itertools
+from os.path import join as pjoin
 import random
+import cPickle as pickle
+import collections
 
+import matplotlib
 import matplotlib.pyplot as plt
 
 import tensorflow as tf
@@ -72,19 +76,65 @@ def inspect_losses(xs, ys, config, vocab, losses):
         print
 
 
-def inspect_feature_embs(feat, embedding, config, vocab, verbose=False, graph=True):
-    print '\n\n' + feat + '\n'
-    vocab_size, dims = embedding.shape
-    pass #TODO
+def inspect_feature_embs(feat, embedding, config, vocab, fd, verbose=False, graph=True):
+    if feat == 'words':
+        vocablist = vocab.vocab_list
+    else:
+        shift = 0
+        if feat in config.var_len_features:
+            shift = 1
+        try:
+            vocablist = vocab.aux_list[feat][shift:]
+        except KeyError:
+            return
+
+    from tsne import bh_sne
+    print '\n' + feat
+    perp = 15
+    W, H = 100, 100
+    if len(vocablist) < 5:
+        perp = 1
+        W, H = 5, 5
+
+    embedding = bh_sne(embedding.astype(np.float64), perplexity=perp)
+    x = embedding[:, 0]
+    y = embedding[:, 1]
+
+    print 'Preparing figure'
+    cmap = matplotlib.cm.get_cmap('Greys')
+    plt.figure(figsize=(W, H))
+    if fd:
+        norm = matplotlib.colors.LogNorm(vmin=1, vmax=max(fd.values()))
+    z = []
+    for i, txt in enumerate(vocablist):
+        if fd and feat in vocab.aux_lookup:
+            freq = fd.get(vocab.aux_lookup[feat].get(txt, -1), None)
+            if freq and freq > 0:
+                freq = norm(freq)
+            else:
+                freq = 0.0
+        else:
+            freq = 1.0
+        z.append(freq)
+        color = cmap(max(freq, 0.25))
+        plt.text(x[i], y[i], txt, fontsize=7, color=color)
+    plt.scatter(x, y, c=np.array(z), vmin=0.0, vmax=1.0, cmap=cmap)
+
+    print 'Saving figure'
+    plt.savefig(pjoin('figures', feat+'.png'), dpi=100)
 
 
 def inspect_embs(session, m, config, vocab):
     with tf.device("/cpu:0") and tf.variable_scope("model", reuse=True):
         if not config.struct_only:
+            with open(pjoin(config.data_path, 'vocab_fd.pk'), 'rb') as f:
+                fd = pickle.load(f)
             word_embeddings = tf.get_variable("word_embedding", [config.vocab_size,
                                                                  config.word_emb_size])
-            inspect_feature_embs('words', word_embeddings.eval(), config, vocab)
+            inspect_feature_embs('words', word_embeddings.eval(), config, vocab, fd)
         if config.conditional:
+            with open(pjoin(config.data_path, 'aux_cfd.pk'), 'rb') as f:
+                cfd = pickle.load(f)
             for i, (feat, dims) in enumerate(config.mimic_embeddings.items()):
                 if dims <= 0: continue
                 try:
@@ -96,7 +146,7 @@ def inspect_embs(session, m, config, vocab):
                     vocab_dims -= 1
                 embedding = tf.get_variable("struct_embedding."+feat,
                                             [vocab_dims, config.mimic_embeddings[feat]])
-                inspect_feature_embs(feat, embedding.eval(), config, vocab)
+                inspect_feature_embs(feat, embedding.eval(), config, vocab, cfd.get(feat, {}))
 
 
 #XXX Unused

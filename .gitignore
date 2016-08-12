@@ -1,6 +1,7 @@
 # Application-specific
 data
 models
+figures
 *.dat
 *.json
 
