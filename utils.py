@@ -92,7 +92,7 @@ def inspect_feature_embs(feat, embedding, config, vocab, dicts, fd):
 
     from tsne import bh_sne
     print '\n' + feat
-    perp = 25
+    perp = 10
     W, H = 110, 110
     if len(vocablist) < 5:
         perp = 1
