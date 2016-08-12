@@ -66,7 +66,7 @@ class LMModel(object):
         with tf.device("/cpu:0"):
             embedding = tf.get_variable("word_embedding", [config.vocab_size,
                                                            config.word_emb_size],
-                                        initializer=tf.contrib.layers.xavier_initializer())
+                                        initializer=tf.random_uniform_initializer(-1.0, 1.0))
             self.word_embedding = embedding
             if config.pretrained_emb:
                 cembedding = tf.constant(vocab.embeddings, dtype=embedding.dtype,
@@ -208,13 +208,19 @@ class LMModel(object):
             assert emb_size >= config.hidden_size
 
         with tf.variable_scope("FF"):
+            self.gate_mean = tf.constant(0.0)
+            self.gate_var = tf.constant(0.0)
+
             if not config.struct_only:
                 words = []
                 for i in range(config.num_steps):
                     words.append(tf.squeeze(tf.slice(inputs, [0,i,0], [-1,1,-1],
                                                      name='word_slice'),
                                             [1], name='word_squeeze'))
-                context = tf.nn.relu(sum(words))
+                context = sum(words)
+                if not config.conditional and config.word2vec:
+                    return context
+                context = tf.nn.relu(context)
 
                 context_transform1_w = tf.get_variable("context_transform1_w",
                                                        [word_emb_size, config.hidden_size],
@@ -240,8 +246,6 @@ class LMModel(object):
                 if config.training and config.keep_prob < 1:
                     context = tf.nn.dropout(context, config.keep_prob)
 
-            self.gate_mean = tf.constant(0.0)
-            self.gate_var = tf.constant(0.0)
             if config.conditional:
                 transform1_w = tf.get_variable("struct_transform1_w", [emb_size,
                                                                        config.hidden_size],
@@ -339,8 +343,10 @@ class LMModel(object):
 
 
     def ff_loss(self, output, config):
-        softmax_w = tf.get_variable("softmax_w", [config.vocab_size, config.hidden_size],
-                                    initializer=tf.contrib.layers.xavier_initializer())
+        output_dim = output.get_shape()[1].value
+        softmax_w = tf.get_variable("softmax_w", [config.vocab_size, output_dim],
+                                    initializer=tf.truncated_normal_initializer(stddev=1.0 / \
+                                                                              np.sqrt(output_dim)))
         softmax_b = tf.get_variable("softmax_b", [config.vocab_size],
                                     initializer=tf.ones_initializer)
         if config.training and config.softmax_samples < config.vocab_size:
