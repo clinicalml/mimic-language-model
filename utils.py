@@ -76,10 +76,10 @@ def inspect_losses(xs, ys, config, vocab, losses):
         print
 
 
-def inspect_feature_embs(feat, embedding, config, vocab, fd, verbose=False, graph=True):
+def inspect_feature_embs(feat, embedding, config, vocab, dicts, fd):
     if feat == 'words':
         vocablist = vocab.vocab_list
-    else:
+    elif dicts:
         shift = 0
         if feat in config.var_len_features:
             shift = 1
@@ -87,11 +87,13 @@ def inspect_feature_embs(feat, embedding, config, vocab, fd, verbose=False, grap
             vocablist = vocab.aux_list[feat][shift:]
         except KeyError:
             return
+    else:
+        return
 
     from tsne import bh_sne
     print '\n' + feat
-    perp = 15
-    W, H = 100, 100
+    perp = 25
+    W, H = 110, 110
     if len(vocablist) < 5:
         perp = 1
         W, H = 5, 5
@@ -107,21 +109,51 @@ def inspect_feature_embs(feat, embedding, config, vocab, fd, verbose=False, grap
         norm = matplotlib.colors.LogNorm(vmin=1, vmax=max(fd.values()))
     z = []
     for i, txt in enumerate(vocablist):
-        if fd and feat in vocab.aux_lookup:
-            freq = fd.get(vocab.aux_lookup[feat].get(txt, -1), None)
+        if fd:
+            if feat == 'words':
+                freq = fd.get(txt, None)
+            else:
+                # XXX can just use i below. need to think about shift.
+                freq = fd.get(vocab.aux_lookup.get(feat, {}).get(txt, -1), None)
             if freq and freq > 0:
                 freq = norm(freq)
             else:
                 freq = 0.0
         else:
             freq = 1.0
+        txt = dicts.get(txt, txt)
         z.append(freq)
         color = cmap(max(freq, 0.25))
         plt.text(x[i], y[i], txt, fontsize=7, color=color)
     plt.scatter(x, y, c=np.array(z), vmin=0.0, vmax=1.0, cmap=cmap)
 
     print 'Saving figure'
-    plt.savefig(pjoin('figures', feat+'.png'), dpi=100)
+    plt.savefig(pjoin('figures', feat+'.png'), dpi=110)
+
+
+def make_struct_mappings(dicts):
+    ret = {}
+    for k, v in dicts.items():
+        if k == 'D_LABITEMS_DATA_TABLE.csv':
+            superkey = 'labs'
+            key = 'ITEMID'
+            value = ['CATEGORY', 'LABEL']
+        elif k == 'D_ICD_DIAGNOSES_DATA_TABLE.csv':
+            superkey = 'diagnoses'
+            key = 'ICD9_CODE'
+            value = ['SHORT_TITLE']
+        elif k == 'D_ICD_PROCEDURES_DATA_TABLE.csv':
+            superkey = 'procedures'
+            key = 'ICD9_CODE'
+            value = ['SHORT_TITLE']
+        mapping = {}
+        for _, val in v.items():
+            try:
+                mapping[val[key]] = ' | '.join([val[s] for s in value])
+            except KeyError:
+                pass
+        ret[superkey] = mapping
+    return ret
 
 
 def inspect_embs(session, m, config, vocab):
@@ -131,8 +163,11 @@ def inspect_embs(session, m, config, vocab):
                 fd = pickle.load(f)
             word_embeddings = tf.get_variable("word_embedding", [config.vocab_size,
                                                                  config.word_emb_size])
-            inspect_feature_embs('words', word_embeddings.eval(), config, vocab, fd)
+            inspect_feature_embs('words', word_embeddings.eval(), config, vocab, {}, fd)
         if config.conditional:
+            with open(pjoin(config.data_path, 'dicts.pk'), 'rb') as f:
+                dicts = pickle.load(f)
+            dicts = make_struct_mappings(dicts)
             with open(pjoin(config.data_path, 'aux_cfd.pk'), 'rb') as f:
                 cfd = pickle.load(f)
             for i, (feat, dims) in enumerate(config.mimic_embeddings.items()):
@@ -146,7 +181,8 @@ def inspect_embs(session, m, config, vocab):
                     vocab_dims -= 1
                 embedding = tf.get_variable("struct_embedding."+feat,
                                             [vocab_dims, config.mimic_embeddings[feat]])
-                inspect_feature_embs(feat, embedding.eval(), config, vocab, cfd.get(feat, {}))
+                inspect_feature_embs(feat, embedding.eval(), config, vocab, dicts.get(feat, {}),
+                                     cfd.get(feat, {}))
 
 
 #XXX Unused
