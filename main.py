@@ -538,7 +538,7 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
         cur_iters = steps + iters
         if cur_iters >= config.max_steps:
             break
-        elif cur_iters >= config.decay_step and not m.decayed:
+        elif config.training and cur_iters >= config.decay_step and not m.decayed:
             m.assign_lr(session, config.learning_rate2)
             m.decayed = True
 
