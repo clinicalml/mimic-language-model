@@ -40,7 +40,6 @@ flags.DEFINE_integer("print_every",      500,     "Print every these many steps"
 flags.DEFINE_integer("save_every",       10000,   "Save every these many steps")
 flags.DEFINE_bool   ("pretrained_emb",   False,   "Use pretrained embeddings")
 flags.DEFINE_bool   ("conditional",      True,    "Use a conditional language model")
-flags.DEFINE_bool   ("word2vec",         False,   "Simple word2vec-style model when unconditional")
 flags.DEFINE_bool   ("training",         True,    "Training mode, turn off for testing")
 flags.DEFINE_string ("optimizer",        'adam',  "Optimizer to use (sgd, adam, adagrad, " \
                                                   "adadelta)")

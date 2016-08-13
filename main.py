@@ -96,7 +96,7 @@ class LMModel(object):
                     vocab_dims -= 1
                 embedding = tf.get_variable("struct_embedding."+feat, [vocab_dims,
                                                                     config.mimic_embeddings[feat]],
-                                           initializer=tf.truncated_normal_initializer(stddev=0.1))
+                                            initializer=tf.random_uniform_initializer(-1.0, 1.0))
                 self.struct_embeddings.append(embedding)
                 l1_norm += utils.l1_norm(embedding)
                 l2_norm += utils.l2_norm(embedding)
@@ -116,7 +116,6 @@ class LMModel(object):
                                                       name='struct_dropout_varlen.'+feat)
                     reduced = tf.reduce_sum(val_embedding, 1,
                                             name='sum_struct_val_embeddings.'+feat)
-                    reduced = tf.nn.relu(reduced)
                 else:
                     reduced = tf.squeeze(val_embedding, [1])
                     if config.training and config.struct_keep_prob < 1:
@@ -219,30 +218,16 @@ class LMModel(object):
                                                      name='word_slice'),
                                             [1], name='word_squeeze'))
                 context = sum(words)
-                if not config.conditional and config.word2vec:
-                    return context
-                context = tf.nn.relu(context)
 
                 context_transform1_w = tf.get_variable("context_transform1_w",
                                                        [word_emb_size, config.hidden_size],
                                                 initializer=tf.contrib.layers.xavier_initializer())
                 context_transform1_b = tf.get_variable("context_transform1_b",
                                                        [config.hidden_size],
-                                                       initializer=tf.ones_initializer)
+                                                       initializer=tf.zeros_initializer)
                 context = tf.nn.bias_add(tf.matmul(context, context_transform1_w,
                                                    name='context_transform1'),
                                          context_transform1_b)
-                context = tf.nn.relu(context)
-
-                context_transform2_w = tf.get_variable("context_transform2_w",
-                                                       [config.hidden_size, config.hidden_size],
-                                                initializer=tf.contrib.layers.xavier_initializer())
-                context_transform2_b = tf.get_variable("context_transform2_b",
-                                                       [config.hidden_size],
-                                                       initializer=tf.ones_initializer)
-                context = tf.nn.bias_add(tf.matmul(context, context_transform2_w,
-                                                   name='context_transform2'),
-                                         context_transform2_b)
 
                 if config.training and config.keep_prob < 1:
                     context = tf.nn.dropout(context, config.keep_prob)
@@ -252,20 +237,10 @@ class LMModel(object):
                                                                        config.hidden_size],
                                                initializer=tf.contrib.layers.xavier_initializer())
                 transform1_b = tf.get_variable("struct_transform1_b", [config.hidden_size],
-                                               initializer=tf.ones_initializer)
+                                               initializer=tf.zeros_initializer)
                 structured_inputs = tf.nn.bias_add(tf.matmul(structured_inputs, transform1_w,
                                                              name='struct_transform1'),
                                                    transform1_b)
-                structured_inputs = tf.nn.relu(structured_inputs)
-
-                transform2_w = tf.get_variable("struct_transform2_w", [config.hidden_size,
-                                                                       config.hidden_size],
-                                               initializer=tf.contrib.layers.xavier_initializer())
-                transform2_b = tf.get_variable("struct_transform2_b", [config.hidden_size],
-                                               initializer=tf.ones_initializer)
-                structured_inputs = tf.nn.bias_add(tf.matmul(structured_inputs, transform2_w,
-                                                             name='struct_transform2'),
-                                                   transform2_b)
 
                 if config.training and config.keep_prob < 1:
                     structured_inputs = tf.nn.dropout(structured_inputs, config.keep_prob)
@@ -275,33 +250,15 @@ class LMModel(object):
                                                                  config.hidden_size],
                                               initializer=tf.contrib.layers.xavier_initializer())
                     gate1_b = tf.get_variable("struct_gate1_b", [config.hidden_size],
-                                              initializer=tf.ones_initializer)
-                    gate = tf.nn.relu(tf.nn.bias_add(tf.matmul(context, gate1_w,
-                                                               name='gate_transform1'), gate1_b))
+                                              initializer=tf.zeros_initializer)
+                    self.gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(context, gate1_w,
+                                                                    name='gate_transform1'),
+                                                          gate1_b))
 
-                    gate2_w = tf.get_variable("struct_gate2_w",
-                                              [config.hidden_size, config.hidden_size],
-                                              initializer=tf.contrib.layers.xavier_initializer())
-                    gate2_b = tf.get_variable("struct_gate2_b", [config.hidden_size],
-                                             initializer=tf.constant_initializer(config.gate_bias))
-                    self.gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(gate, gate2_w,
-                                                                    name='gate2_transform'),
-                                                          gate2_b))
                     self.gate_mean, self.gate_var = tf.nn.moments(self.gate, [0, 1])
                     context = (self.gate * context) + ((1.0 - self.gate) * structured_inputs)
-                else:
-                    context = tf.nn.relu(structured_inputs)
-            else:
-                context = tf.nn.relu(context)
 
-            postgate_w = tf.get_variable("postgate_w", [config.hidden_size, config.hidden_size],
-                                         initializer=tf.contrib.layers.xavier_initializer())
-            postgate_b = tf.get_variable("postgate_b", [config.hidden_size],
-                                         initializer=tf.ones_initializer)
-            context = tf.nn.bias_add(tf.matmul(context, postgate_w, name='postgate_transform'),
-                                     postgate_b)
-
-        return tf.nn.relu(context)
+        return context
 
 
     def ff_loss_hsm(self, output, config, vocab):
@@ -319,9 +276,9 @@ class LMModel(object):
         softmax_w = tf.get_variable("softmax_w", [l1size, config.hidden_size, l2size],
                                     initializer=tf.contrib.layers.xavier_initializer())
         softmax_b = tf.get_variable("softmax_b", [l1size-1, l2size],
-                                    initializer=tf.ones_initializer)
+                                    initializer=tf.zeros_initializer)
         concat = tf.get_variable("softmax_b_concat", [1, l2size - extra],
-                                 initializer=tf.ones_initializer)
+                                 initializer=tf.zeros_initializer)
         if extra:
             padding = tf.constant(-np.inf, shape=[1, extra])
             concat = tf.concat(1, [concat, padding])
@@ -346,10 +303,9 @@ class LMModel(object):
     def ff_loss(self, output, config):
         output_dim = output.get_shape()[1].value
         softmax_w = tf.get_variable("softmax_w", [config.vocab_size, output_dim],
-                                    initializer=tf.truncated_normal_initializer(stddev=1.0 / \
-                                                                              np.sqrt(output_dim)))
+                                    initializer=tf.contrib.layers.xavier_initializer())
         softmax_b = tf.get_variable("softmax_b", [config.vocab_size],
-                                    initializer=tf.ones_initializer)
+                                    initializer=tf.zeros_initializer)
         if config.training and config.softmax_samples < config.vocab_size:
             targets = tf.expand_dims(self.targets, -1)
             return tf.nn.sampled_softmax_loss(softmax_w, softmax_b, output, targets,
