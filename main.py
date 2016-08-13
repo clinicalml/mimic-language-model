@@ -34,6 +34,7 @@ class LMModel(object):
     def __init__(self, config):
         batch_size = config.batch_size
         num_steps = config.num_steps
+        self.decayed = False
 
         self.input_data = tf.placeholder(tf.int32, [batch_size, num_steps], name='input_data')
         if config.recurrent:
@@ -576,8 +577,12 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
             save_file = saver.save(session, config.save_file)
             if verbose: print "Saved to", save_file
 
-        if steps + iters >= config.max_steps:
+        cur_iters = steps + iters
+        if cur_iters >= config.max_steps:
             break
+        elif cur_iters >= config.decay_step and not m.decayed:
+            m.assign_lr(session, config.learning_rate2)
+            m.decayed = True
 
     return np.exp(perps / iters), steps + iters
 
@@ -635,9 +640,13 @@ def main(_):
             utils.inspect_embs(session, m, config, vocab)
         else:
             steps = 0
+            if config.training:
+                m.assign_lr(session, config.learning_rate)
             for i in xrange(config.max_epoch):
+                if i == config.decay_epoch and not m.decayed:
+                    m.assign_lr(session, config.learning_rate2)
+                    m.decayed = True
                 if config.training:
-                    m.assign_lr(session, config.learning_rate) #* lr_decay)
                     print "Epoch: %d Learning rate: %.3f" % (i + 1, session.run(m.lr))
                 perplexity, steps = run_epoch(session, m, config, vocab, saver, steps, run_options,
                                               run_metadata, verbose=True)

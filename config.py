@@ -14,8 +14,11 @@ flags.DEFINE_string ("load_struct_file", "",                  "File to load stru
                                                               "embeddings from")
 flags.DEFINE_string ("load_emb_file",    "",                  "File to load word embeddings from")
 
-flags.DEFINE_float  ("learning_rate",    1e-4,    "Optimizer learning rate")
-flags.DEFINE_float  ("max_grad_norm",    -1,       "Gradient clipping")
+flags.DEFINE_float  ("learning_rate",    1e-3,    "Optimizer initial learning rate")
+flags.DEFINE_float  ("learning_rate2",   1e-4,    "Optimizer decayed learning rate")
+flags.DEFINE_integer("decay_step",       10000,   "Step to decay learning rate at")
+flags.DEFINE_integer("decay_epoch",      2,       "Epoch to decay learning rate at")
+flags.DEFINE_float  ("max_grad_norm",    -1,      "Gradient clipping")
 flags.DEFINE_integer("num_layers",       2,       "Number of LSTM layers")
 flags.DEFINE_integer("num_steps",        20,      "Number of steps to unroll for RNNs")
 flags.DEFINE_integer("context_size",     6,       "Context size for CBOW")
