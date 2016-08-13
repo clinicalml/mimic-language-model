@@ -257,6 +257,8 @@ class LMModel(object):
 
                     self.gate_mean, self.gate_var = tf.nn.moments(self.gate, [0, 1])
                     context = (self.gate * context) + ((1.0 - self.gate) * structured_inputs)
+                else:
+                    context = structured_inputs
 
         return context
 
@@ -599,7 +601,7 @@ def main(_):
             if config.training:
                 m.assign_lr(session, config.learning_rate)
             for i in xrange(config.max_epoch):
-                if i == config.decay_epoch and not m.decayed:
+                if i+1 == config.decay_epoch and not m.decayed:
                     m.assign_lr(session, config.learning_rate2)
                     m.decayed = True
                 if config.training:
