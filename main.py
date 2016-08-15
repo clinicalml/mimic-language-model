@@ -51,6 +51,8 @@ class LMModel(object):
                 if dims > 0:
                     self.aux_data[feat] = tf.placeholder(tf.int32, [batch_size, None],
                                                          name='aux_data.'+feat)
+                    self.aux_data_len[feat] = tf.placeholder(tf.float32, [batch_size],
+                                                             name='aux_data_len.'+feat)
                     self.struct_enable[feat] = tf.placeholder(tf.float32,
                                                               name='struct_enable.'+feat)
 
@@ -115,7 +117,9 @@ class LMModel(object):
                                                                    tf.shape(val_embedding)[1], 1]),
                                                       name='struct_dropout_varlen.'+feat)
                     reduced = tf.reduce_sum(val_embedding, 1,
-                                            name='sum_struct_val_embeddings.'+feat)
+                                            name='sum_struct_val_embeddings.'+feat) / \
+                              tf.reshape(tf.maximum(self.aux_data_len[feat], 1),
+                                         [config.batch_size, 1], name='struct_mean_reshape') # mean
                 else:
                     reduced = tf.squeeze(val_embedding, [1])
                     if config.training and config.struct_keep_prob < 1:
@@ -395,7 +399,7 @@ class LMModel(object):
 
 
 def call_session(session, m, config, vocab, zero_state, batch, profile_kwargs):
-    x, y, mask, aux, new_batch = batch
+    x, y, mask, aux, aux_len, new_batch = batch
     f_dict = {m.input_data: x, m.targets: y}
     if config.recurrent:
         f_dict[m.mask] = mask
@@ -406,6 +410,7 @@ def call_session(session, m, config, vocab, zero_state, batch, profile_kwargs):
     if config.conditional:
         for feat, vals in aux.items():
             f_dict[m.aux_data[feat]] = vals
+            f_dict[m.aux_data_len[feat]] = aux_len[feat]
         if config.inspect == 'struct':
             for v in m.struct_enable.values():
                 f_dict[v] = 1.0
