@@ -81,7 +81,9 @@ def inspect_losses(xs, ys, config, vocab, losses, max_minperp=150.0, buffer_size
     global losses_buffer
     for x, y, loss in zip(xs, ys, losses):
         word = vocab.vocab_list[y]
-        if word == '|' or '#' in word or  word in nltk.corpus.stopwords.words('english'): continue
+        if word == '|' or word == '+' or '#' in word or \
+                word in nltk.corpus.stopwords.words('english'):
+            continue
         #valid = True
         #for context in x:
         #    word = vocab.vocab_list[context]
