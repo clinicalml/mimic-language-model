@@ -76,19 +76,30 @@ def _inspect_losses(x, y, config, vocab, loss):
 
 losses_buffer = []
 
-def inspect_losses(xs, ys, config, vocab, losses, buffer_size=1000):
+def inspect_losses(xs, ys, config, vocab, losses, max_minperp=150.0, buffer_size=1000):
     import nltk
     global losses_buffer
     for x, y, loss in zip(xs, ys, losses):
         word = vocab.vocab_list[y]
-        if word == '|' or word in nltk.corpus.stopwords.words('english'): continue
-        for context in x:
-            word = vocab.vocab_list[context]
-            if word == '|': break
-        if word == '|': continue
+        if word == '|' or '#' in word or  word in nltk.corpus.stopwords.words('english'): continue
+        #valid = True
+        #for context in x:
+        #    word = vocab.vocab_list[context]
+        #    if word == '|' or word == '+' or '#' in word:
+        #        valid = False
+        #        break
+        #if not valid: continue
         loss = sorted(loss, key=lambda x:x[0])
         la = np.exp(np.array([l[0] for l in loss]))
+        if np.amin(la) > max_minperp: continue
         stdev = np.std(la / np.amax(la))
+        #d = {k:v for v,k,_ in loss}
+        #try:
+        #    if d['all'] > d['unconditional']:
+        #        stdev = -stdev
+        #except KeyError:
+        #    if d['all'] > d['none']:
+        #        stdev = -stdev
         losses_buffer.append((stdev, x, y, loss))
         if buffer_size > 0 and len(losses_buffer) >= buffer_size:
             losses_buffer = sorted(losses_buffer, key=lambda x:x[0])
