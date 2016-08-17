@@ -53,27 +53,46 @@ def l2_norm(tensor):
     return tf.sqrt(tf.reduce_sum(tf.mul(tensor, tensor)))
 
 
-def inspect_losses(xs, ys, config, vocab, losses):
-    losses = [sorted(e) for e in losses]
+def _inspect_losses(x, y, config, vocab, loss):
+    print_color('[', Colors.HEADER)
+    for i in range(config.num_steps // 2):
+        print vocab.vocab_list[x[i]],
+    print_color(vocab.vocab_list[y], Colors.OKGREEN)
+    for i in range(config.num_steps // 2, config.num_steps):
+        print vocab.vocab_list[x[i]],
+    print_color(']', Colors.HEADER)
+    print
+    for k, v, g in loss:
+        print ("perp %.5f, prob %.5f:" % (np.exp(k), np.exp(-k))),
+        if v == 'all': color = Colors.OKGREEN
+        elif v == 'none': color = Colors.FAIL
+        elif v.startswith('only_'): color = Colors.OKBLUE
+        else: color = Colors.WARNING
+        print_color(v.ljust(20), color)
+        print 'gate min %.6f, max %.6f, avg %.6f, std %.6f' % (np.min(g), np.max(g),
+                                                               np.mean(g), np.std(g))
+    print
+
+
+losses_buffer = []
+
+def inspect_losses(xs, ys, config, vocab, losses, buffer_size=500):
+    import nltk
+    global losses_buffer
     for x, y, loss in zip(xs, ys, losses):
-        print_color('[', Colors.HEADER)
-        for i in range(config.num_steps // 2):
-            print vocab.vocab_list[x[i]],
-        print_color(vocab.vocab_list[y], Colors.OKGREEN)
-        for i in range(config.num_steps // 2, config.num_steps):
-            print vocab.vocab_list[x[i]],
-        print_color(']', Colors.HEADER)
-        print
-        for k, v, g in loss:
-            print ("perp %.5f, prob %.5f:" % (np.exp(k), np.exp(-k))),
-            if v == 'all': color = Colors.OKGREEN
-            elif v == 'none': color = Colors.FAIL
-            elif v.startswith('only_'): color = Colors.OKBLUE
-            else: color = Colors.WARNING
-            print_color(v.ljust(20), color)
-            print 'gate min %.6f, max %.6f, avg %.6f, std %.6f' % (np.min(g), np.max(g),
-                                                                    np.mean(g), np.std(g))
-        print
+        word = vocab.vocab_list[y]
+        if word == '|' or word in nltk.corpus.stopwords.words('english'): continue
+        loss = sorted(loss)
+        la = np.array([l[0] for l in loss])
+        stdev = np.std(la / np.amax(la))
+        losses_buffer.append((stdev, x, y, loss))
+        if len(losses_buffer) >= buffer_size:
+            losses_buffer = sorted(losses_buffer, key=lambda x:x[0])
+            for _, x_, y_, loss_ in losses_buffer:
+                _inspect_losses(x_, y_, config, vocab, loss_)
+            losses_buffer = []
+            print 'Press enter to continue ...'
+            raw_input()
 
 
 def inspect_feature_embs(feat, embedding, config, vocab, dicts, fd, topk=2500):
