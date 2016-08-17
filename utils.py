@@ -76,27 +76,27 @@ def _inspect_losses(x, y, config, vocab, loss):
 
 losses_buffer = []
 
-def inspect_losses(xs, ys, config, vocab, losses, buffer_size=500):
+def inspect_losses(xs, ys, config, vocab, losses, buffer_size=1000):
     import nltk
     global losses_buffer
     for x, y, loss in zip(xs, ys, losses):
         word = vocab.vocab_list[y]
         if word == '|' or word in nltk.corpus.stopwords.words('english'): continue
-        loss = sorted(loss)
-        la = np.array([l[0] for l in loss])
+        for context in x:
+            word = vocab.vocab_list[context]
+            if word == '|': break
+        if word == '|': continue
+        loss = sorted(loss, key=lambda x:x[0])
+        la = np.exp(np.array([l[0] for l in loss]))
         stdev = np.std(la / np.amax(la))
         losses_buffer.append((stdev, x, y, loss))
         if buffer_size > 0 and len(losses_buffer) >= buffer_size:
             losses_buffer = sorted(losses_buffer, key=lambda x:x[0])
-            for _, x_, y_, loss_ in losses_buffer:
+            for s, x_, y_, loss_ in losses_buffer:
                 _inspect_losses(x_, y_, config, vocab, loss_)
             losses_buffer = []
             print 'Press enter to continue ...'
             raw_input()
-    if losses_buffer:
-        losses_buffer = sorted(losses_buffer, key=lambda x:x[0])
-        for _, x_, y_, loss_ in losses_buffer:
-            _inspect_losses(x_, y_, config, vocab, loss_)
 
 
 def inspect_compare(config, vocab):
