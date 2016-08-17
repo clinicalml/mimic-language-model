@@ -65,7 +65,7 @@ def _inspect_losses(x, y, config, vocab, loss):
     for k, v, g in loss:
         print ("perp %.5f, prob %.5f:" % (np.exp(k), np.exp(-k))),
         if v == 'all': color = Colors.OKGREEN
-        elif v == 'none': color = Colors.FAIL
+        elif v == 'none' or v == 'unconditional': color = Colors.FAIL
         elif v.startswith('only_'): color = Colors.OKBLUE
         else: color = Colors.WARNING
         print_color(v.ljust(20), color)
@@ -86,13 +86,30 @@ def inspect_losses(xs, ys, config, vocab, losses, buffer_size=500):
         la = np.array([l[0] for l in loss])
         stdev = np.std(la / np.amax(la))
         losses_buffer.append((stdev, x, y, loss))
-        if len(losses_buffer) >= buffer_size:
+        if buffer_size > 0 and len(losses_buffer) >= buffer_size:
             losses_buffer = sorted(losses_buffer, key=lambda x:x[0])
             for _, x_, y_, loss_ in losses_buffer:
                 _inspect_losses(x_, y_, config, vocab, loss_)
             losses_buffer = []
             print 'Press enter to continue ...'
             raw_input()
+    if losses_buffer:
+        losses_buffer = sorted(losses_buffer, key=lambda x:x[0])
+        for _, x_, y_, loss_ in losses_buffer:
+            _inspect_losses(x_, y_, config, vocab, loss_)
+
+
+def inspect_compare(config, vocab):
+    with open(config.load_uncond_results, 'rb') as f:
+        uncond = pickle.load(f)
+    with open(config.load_cond_results, 'rb') as f:
+        cond = pickle.load(f)
+    for (x, y, cond_losses), (x_, y_, uncond_losses) in zip(cond, uncond):
+        assert np.all(x == x_)
+        assert np.all(y == y_)
+        for i in xrange(config.batch_size):
+            cond_losses[i].extend(uncond_losses[i])
+        inspect_losses(x, y, config, vocab, cond_losses)
 
 
 def inspect_feature_embs(feat, embedding, config, vocab, dicts, fd, topk=2500):

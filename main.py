@@ -17,6 +17,7 @@ from __future__ import division
 
 import time
 import sys
+import cPickle as pickle
 
 import numpy as np
 import tensorflow as tf
@@ -26,6 +27,9 @@ import reader
 import utils
 
 from tensorflow.python.client import timeline
+
+
+write_results = []
 
 
 class LMModel(object):
@@ -212,6 +216,7 @@ class LMModel(object):
             assert emb_size >= config.hidden_size
 
         with tf.variable_scope("FF"):
+            self.gate = tf.constant([0.0 for _ in xrange(config.batch_size)])
             self.gate_mean = tf.constant(0.0)
             self.gate_var = tf.constant(0.0)
 
@@ -415,19 +420,28 @@ def call_session(session, m, config, vocab, zero_state, batch, profile_kwargs):
             for v in m.struct_enable.values():
                 f_dict[v] = 1.0
     if config.recurrent:
-        ret = session.run([m.perplexity, m.struct_l1, m.struct_l2, m.cost, m.final_state,
-                           m.train_op], f_dict, **profile_kwargs)
+        ops = [m.perplexity, m.struct_l1, m.struct_l2, m.cost, m.final_state, m.train_op]
     else:
-        ret = session.run([m.perplexity, m.struct_l1, m.struct_l2, m.gate_mean, m.gate_var, m.cost,
-                           m.train_op], f_dict, **profile_kwargs)
+        ops = [m.perplexity, m.struct_l1, m.struct_l2, m.gate_mean, m.gate_var, m.cost, m.train_op]
+    if config.dump_results_file or (config.conditional and config.inspect == 'struct'):
+        ops += [m.loss, m.gate]
+
+    ret = session.run(ops, f_dict, **profile_kwargs)
+
+    if config.dump_results_file or (config.conditional and config.inspect == 'struct'):
+        loss, gate = ret[-2:]
+        ret = ret[:-2]
+
+        losses = [[] for _ in xrange(config.batch_size)]
+        for i in xrange(config.batch_size):
+            if config.conditional:
+                losses[i].append((loss[i], 'all', gate[i]))
+            else:
+                losses[i].append((loss[i], 'unconditional', gate[i]))
 
     #inspect before returning
     if config.conditional and config.inspect == 'struct':
         feats = m.struct_enable.keys()
-        losses = [[] for _ in xrange(config.batch_size)]
-        loss, gate = session.run([m.loss, m.gate], f_dict)
-        for i in xrange(config.batch_size):
-            losses[i].append((loss[i], 'all', gate[i]))
         for v in m.struct_enable.values():
             f_dict[v] = 0.0
         loss, gate = session.run([m.loss, m.gate], f_dict)
@@ -451,9 +465,14 @@ def call_session(session, m, config, vocab, zero_state, batch, profile_kwargs):
                 loss, gate = session.run([m.loss, m.gate], f_dict)
                 for i in xrange(config.batch_size):
                     losses[i].append((loss[i], s+feat, gate[i]))
-        utils.inspect_losses(x, y, config, vocab, losses)
+        if not config.dump_results_file:
+            utils.inspect_losses(x, y, config, vocab, losses)
 
-    return ret
+    if config.dump_results_file:
+        global write_results
+        write_results.append((x, y, losses))
+
+    return ret[:-1]
 
 
 def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata, verbose=False):
@@ -479,11 +498,11 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
             profile_kwargs['run_metadata'] = run_metadata
 
         if config.recurrent:
-            perp, l1, l2, cost, state, _ = call_session(session, m, config, vocab, zero_state,
-                                                        batch, profile_kwargs)
+            perp, l1, l2, cost, state = call_session(session, m, config, vocab, zero_state, batch,
+                                                     profile_kwargs)
         else:
-            perp, l1, l2, gate_mean, gate_var, cost, _ = call_session(session, m, config, vocab,
-                                                                      None, batch, profile_kwargs)
+            perp, l1, l2, gate_mean, gate_var, cost = call_session(session, m, config, vocab, None,
+                                                                   batch, profile_kwargs)
 
         if config.profile:
             tl = timeline.Timeline(run_metadata.step_stats)
@@ -601,6 +620,8 @@ def main(_):
 
         if config.inspect == 'embs':
             utils.inspect_embs(session, m, config, vocab)
+        elif config.inspect == 'compare':
+            utils.inspect_compare(config, vocab)
         else:
             steps = 0
             if config.training:
@@ -620,6 +641,11 @@ def main(_):
                     break
                 if steps >= config.max_steps:
                     break
+
+    global write_results
+    if config.dump_results_file and write_results:
+        with open(config.dump_results_file, 'wb') as f:
+            pickle.dump(write_results, f, -1)
 
 
 if __name__ == "__main__":

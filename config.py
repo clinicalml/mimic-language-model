@@ -5,14 +5,20 @@ import tensorflow as tf
 flags = tf.flags
 
 # command-line config
-flags.DEFINE_string ("data_path",        "data",              "Data path")
-flags.DEFINE_string ("save_file",        "models/recent.dat", "Save file")
-flags.DEFINE_string ("timeline_file",    "timeline.json",     "File to save profiling " \
-                                                              "information to")
-flags.DEFINE_string ("load_file",        "",                  "File to load model from")
-flags.DEFINE_string ("load_struct_file", "",                  "File to load structured " \
-                                                              "embeddings from")
-flags.DEFINE_string ("load_emb_file",    "",                  "File to load word embeddings from")
+flags.DEFINE_string ("data_path",           "data",              "Data path")
+flags.DEFINE_string ("save_file",           "models/recent.dat", "Save file")
+flags.DEFINE_string ("timeline_file",       "timeline.json",     "File to save profiling " \
+                                                                 "information to")
+flags.DEFINE_string ("load_file",           "",                  "File to load model from")
+flags.DEFINE_string ("load_struct_file",    "",                  "File to load structured " \
+                                                                 "embeddings from")
+flags.DEFINE_string ("load_emb_file",       "",                  "File to load word embeddings " \
+                                                                 "from")
+flags.DEFINE_string ("dump_results_file",   "",                  "File to dump predictions into")
+flags.DEFINE_string ("load_cond_results",   "",                  "File to load conditional " \
+                                                                 "predictions from")
+flags.DEFINE_string ("load_uncond_results", "",                  "File to load unconditional " \
+                                                                 "predictions from")
 
 flags.DEFINE_float  ("learning_rate",    1e-3,    "Optimizer initial learning rate")
 flags.DEFINE_float  ("learning_rate2",   1e-4,    "Optimizer decayed learning rate")
@@ -46,7 +52,7 @@ flags.DEFINE_string ("optimizer",        'adam',  "Optimizer to use (sgd, adam, 
 flags.DEFINE_bool   ("force_trainset",   False,   "Force training set even for testing")
 flags.DEFINE_string ("fake_struct",      'none',  "Fake structured data (none, zeros, random)")
 flags.DEFINE_string ("inspect",          'none',  "Inspect the loaded/new model (none, embs, " \
-                                                  "struct)")
+                                                  "struct, compare)")
 flags.DEFINE_bool   ("profile",          False,   "Do profiling on first batch")
 flags.DEFINE_bool   ("recurrent",        False,   "Use a recurrent language model")
 flags.DEFINE_bool   ("struct_only",      False,   "Use a model with only structured data")
