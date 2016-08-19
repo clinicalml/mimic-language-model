@@ -465,12 +465,13 @@ def call_session(session, m, config, vocab, zero_state, batch, profile_kwargs):
                 loss, gate = session.run([m.loss, m.gate], f_dict)
                 for i in xrange(config.batch_size):
                     losses[i].append((loss[i], s+feat, gate[i]))
-        if not config.dump_results_file:
-            utils.inspect_losses(x, y, config, vocab, losses)
 
     if config.dump_results_file:
         global write_results
-        write_results.append((x, y, losses))
+        if config.conditional:
+            write_results.append((x, y, losses, aux, aux_len))
+        else:
+            write_results.append((x, y, losses))
 
     return ret[:-1]
 

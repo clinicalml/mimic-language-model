@@ -53,7 +53,7 @@ def l2_norm(tensor):
     return tf.sqrt(tf.reduce_sum(tf.mul(tensor, tensor)))
 
 
-def _inspect_losses(x, y, config, vocab, loss):
+def _inspect_losses(x, y, config, vocab, loss, aux, aux_len, dicts):
     print_color('[', Colors.HEADER)
     for i in range(config.num_steps // 2):
         print vocab.vocab_list[x[i]],
@@ -72,14 +72,31 @@ def _inspect_losses(x, y, config, vocab, loss):
         print 'gate min %.6f, max %.6f, avg %.6f, std %.6f' % (np.min(g), np.max(g),
                                                                np.mean(g), np.std(g))
     print
+    for feat, v in aux.items():
+        print feat
+        if feat in config.var_len_features:
+            print ', '.join([str(dicts.get(feat, {}).get(vocab.aux_list[feat][val], val))
+                                for val in v[:aux_len[feat]]])
+        else:
+            try:
+                print vocab.aux_list.get(feat, [])[v[0]]
+            except IndexError:
+                if feat == 'gender':
+                    if v[0] == 1: print 'FEMALE'
+                    else: print 'MALE'
+                else:
+                    print v[0]
+        print
+    print
 
 
 losses_buffer = []
 
-def inspect_losses(xs, ys, config, vocab, losses, max_minperp=150.0, buffer_size=1000):
+def inspect_losses(xs, ys, config, vocab, losses, aux, aux_len, dicts, max_minperp=150.0,
+                   buffer_size=1000):
     import nltk
     global losses_buffer
-    for x, y, loss in zip(xs, ys, losses):
+    for i, (x, y, loss) in enumerate(zip(xs, ys, losses)):
         word = vocab.vocab_list[y]
         if word == '|' or word == '+' or '#' in word or \
                 word in nltk.corpus.stopwords.words('english'):
@@ -103,14 +120,41 @@ def inspect_losses(xs, ys, config, vocab, losses, max_minperp=150.0, buffer_size
                     break
             except KeyError:
                 pass
-        losses_buffer.append((stdev, x, y, loss))
+        aux_ = {k:v[i] for k,v in aux.items()}
+        aux_len_ = {k:v[i] for k,v in aux_len.items()}
+        losses_buffer.append((stdev, x, y, loss, aux_, aux_len_))
         if buffer_size > 0 and len(losses_buffer) >= buffer_size:
             losses_buffer = sorted(losses_buffer, key=lambda x:x[0])
-            for s, x_, y_, loss_ in losses_buffer:
-                _inspect_losses(x_, y_, config, vocab, loss_)
+            for s, x_, y_, loss_, aux_, aux_len_ in losses_buffer:
+                _inspect_losses(x_, y_, config, vocab, loss_, aux_, aux_len_, dicts)
             losses_buffer = []
             print 'Press enter to continue ...'
             raw_input()
+
+
+def make_struct_mappings(dicts):
+    ret = {}
+    for k, v in dicts.items():
+        if k == 'D_LABITEMS_DATA_TABLE.csv':
+            superkey = 'labs'
+            key = 'ITEMID'
+            value = ['CATEGORY', 'LABEL']
+        elif k == 'D_ICD_DIAGNOSES_DATA_TABLE.csv':
+            superkey = 'diagnoses'
+            key = 'ICD9_CODE'
+            value = ['SHORT_TITLE']
+        elif k == 'D_ICD_PROCEDURES_DATA_TABLE.csv':
+            superkey = 'procedures'
+            key = 'ICD9_CODE'
+            value = ['SHORT_TITLE']
+        mapping = {}
+        for _, val in v.items():
+            try:
+                mapping[val[key]] = ' | '.join([val[s] for s in value])
+            except KeyError:
+                pass
+        ret[superkey] = mapping
+    return ret
 
 
 def inspect_compare(config, vocab):
@@ -118,12 +162,15 @@ def inspect_compare(config, vocab):
         uncond = pickle.load(f)
     with open(config.load_cond_results, 'rb') as f:
         cond = pickle.load(f)
-    for (x, y, cond_losses), (x_, y_, uncond_losses) in zip(cond, uncond):
+    with open(pjoin(config.data_path, 'dicts.pk'), 'rb') as f:
+        dicts = pickle.load(f)
+    dicts = make_struct_mappings(dicts)
+    for (x, y, cond_losses, aux, aux_len), (x_, y_, uncond_losses) in zip(cond, uncond):
         assert np.all(x == x_)
         assert np.all(y == y_)
         for i in xrange(config.batch_size):
             cond_losses[i].extend(uncond_losses[i])
-        inspect_losses(x, y, config, vocab, cond_losses)
+        inspect_losses(x, y, config, vocab, cond_losses, aux, aux_len, dicts)
 
 
 def inspect_feature_embs(feat, embedding, config, vocab, dicts, fd, topk=2500):
@@ -189,31 +236,6 @@ def inspect_feature_embs(feat, embedding, config, vocab, dicts, fd, topk=2500):
 
     print 'Saving figure'
     plt.savefig(pjoin('figures', feat+'.png'), dpi=110)
-
-
-def make_struct_mappings(dicts):
-    ret = {}
-    for k, v in dicts.items():
-        if k == 'D_LABITEMS_DATA_TABLE.csv':
-            superkey = 'labs'
-            key = 'ITEMID'
-            value = ['CATEGORY', 'LABEL']
-        elif k == 'D_ICD_DIAGNOSES_DATA_TABLE.csv':
-            superkey = 'diagnoses'
-            key = 'ICD9_CODE'
-            value = ['SHORT_TITLE']
-        elif k == 'D_ICD_PROCEDURES_DATA_TABLE.csv':
-            superkey = 'procedures'
-            key = 'ICD9_CODE'
-            value = ['SHORT_TITLE']
-        mapping = {}
-        for _, val in v.items():
-            try:
-                mapping[val[key]] = ' | '.join([val[s] for s in value])
-            except KeyError:
-                pass
-        ret[superkey] = mapping
-    return ret
 
 
 def inspect_embs(session, m, config, vocab):
