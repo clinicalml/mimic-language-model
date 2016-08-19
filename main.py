@@ -121,9 +121,7 @@ class LMModel(object):
                                                                    tf.shape(val_embedding)[1], 1]),
                                                       name='struct_dropout_varlen.'+feat)
                     reduced = tf.reduce_sum(val_embedding, 1,
-                                            name='sum_struct_val_embeddings.'+feat) / \
-                              tf.reshape(tf.maximum(self.aux_data_len[feat], 1),
-                                         [config.batch_size, 1], name='struct_mean_reshape') # mean
+                                            name='sum_struct_val_embeddings.'+feat)
                 else:
                     reduced = tf.squeeze(val_embedding, [1])
                     if config.training and config.struct_keep_prob < 1:
@@ -223,13 +221,27 @@ class LMModel(object):
             if not config.struct_only:
                 words = []
                 for i in range(config.num_steps):
-                    words.append(tf.squeeze(tf.slice(inputs, [0,i,0], [-1,1,-1],
-                                                     name='word_slice'),
-                                            [1], name='word_squeeze'))
+                    embedding = tf.squeeze(tf.slice(inputs, [0,i,0], [-1,1,-1], name='word_slice'),
+                                           [1], name='word_squeeze')
+                    if config.distance_dep:
+                        word_transform_w = tf.get_variable("word" + str(i) + "_transform_w",
+                                                           [word_emb_size, config.hidden_size],
+                                                initializer=tf.contrib.layers.xavier_initializer())
+                        word_transform_b = tf.get_variable("word" + str(i) + "_transform_b",
+                                                           [config.hidden_size],
+                                                           initializer=tf.zeros_initializer)
+                        embedding = tf.nn.bias_add(tf.matmul(embedding, word_transform_w,
+                                                             name='word' + str(i) + '_transform'),
+                                                   word_transform_b)
+                    words.append(embedding)
                 context = sum(words)
 
+                if config.distance_dep:
+                    prev_size = config.hidden_size
+                else:
+                    prev_size = word_emb_size
                 context_transform1_w = tf.get_variable("context_transform1_w",
-                                                       [word_emb_size, config.hidden_size],
+                                                       [prev_size, config.hidden_size],
                                                 initializer=tf.contrib.layers.xavier_initializer())
                 context_transform1_b = tf.get_variable("context_transform1_b",
                                                        [config.hidden_size],

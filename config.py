@@ -28,8 +28,9 @@ flags.DEFINE_float  ("max_grad_norm",    -1,      "Gradient clipping")
 flags.DEFINE_integer("num_layers",       2,       "Number of LSTM layers")
 flags.DEFINE_integer("num_steps",        20,      "Number of steps to unroll for RNNs")
 flags.DEFINE_integer("context_size",     6,       "Context size for CBOW")
-flags.DEFINE_integer("hidden_size",      200,     "Hidden state size")
-flags.DEFINE_integer("word_emb_size",    250,     "Number of learnable dimensions in word " \
+flags.DEFINE_integer("hidden_size",      192,     "Hidden state size")
+flags.DEFINE_bool   ("distance_dep",     False,   "Distance-dependent word embeddings")
+flags.DEFINE_integer("word_emb_size",    256,     "Number of learnable dimensions in word " \
                                                   "embeddings")
 flags.DEFINE_float  ("struct_l1_weight", 0.0,     "Weight for minimizing L1-norm of structured " \
                                                   "embeddings")
@@ -41,7 +42,7 @@ flags.DEFINE_integer("softmax_samples",  1000,    "Number of classes to sample f
 flags.DEFINE_float  ("keep_prob",        1.0,     "Dropout keep probability")
 flags.DEFINE_float  ("struct_keep_prob", 1.0,     "Structural info dropout keep probability")
 flags.DEFINE_float  ("gate_bias",        0.0,     "Initial bias before the gate sigmoid")
-flags.DEFINE_integer("batch_size",       25,      "Batch size")
+flags.DEFINE_integer("batch_size",       32,      "Batch size")
 flags.DEFINE_integer("print_every",      500,     "Print every these many steps")
 flags.DEFINE_integer("save_every",       10000,   "Save every these many steps")
 flags.DEFINE_bool   ("pretrained_emb",   False,   "Use pretrained embeddings")
@@ -61,14 +62,15 @@ flags.DEFINE_integer("data_rand_buffer", 25000,   "Number of buffered CBOW minib
                                                   "randomize")
 flags.DEFINE_integer("samples_per_note", 20,      "Number of CBOW minibatches per note")
 
+# making the sum of the struct embeddings sum to a multiple of 32 (they're concatenated)
 flags.DEFINE_integer("dims_gender",         1,   "Dimensionality for gender")
 flags.DEFINE_integer("dims_has_dod",        1,   "Dimensionality for has_dod")
 flags.DEFINE_integer("dims_has_icu_stay",   1,   "Dimensionality for has_icu_stay")
 flags.DEFINE_integer("dims_admission_type", 4,   "Dimensionality for admission_type")
-flags.DEFINE_integer("dims_diagnoses",      150, "Dimensionality for diagnoses")
-flags.DEFINE_integer("dims_procedures",     150, "Dimensionality for procedures")
-flags.DEFINE_integer("dims_labs",           150, "Dimensionality for labs")
-flags.DEFINE_integer("dims_prescriptions",  150, "Dimensionality for prescriptions")
+flags.DEFINE_integer("dims_diagnoses",      127, "Dimensionality for diagnoses")
+flags.DEFINE_integer("dims_procedures",     126, "Dimensionality for procedures")
+flags.DEFINE_integer("dims_labs",           126, "Dimensionality for labs")
+flags.DEFINE_integer("dims_prescriptions",  126, "Dimensionality for prescriptions")
 
 
 class Config(object):
