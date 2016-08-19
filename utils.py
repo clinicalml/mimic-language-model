@@ -93,7 +93,7 @@ def _inspect_losses(x, y, config, vocab, loss, aux, aux_len, dicts):
 losses_buffer = []
 
 def inspect_losses(xs, ys, config, vocab, losses, aux, aux_len, dicts, max_minperp=150.0,
-                   buffer_size=1000):
+                   buffer_size=1000, sort_helpful='pos'):
     import nltk
     global losses_buffer
     for i, (x, y, loss) in enumerate(zip(xs, ys, losses)):
@@ -113,13 +113,16 @@ def inspect_losses(xs, ys, config, vocab, losses, aux, aux_len, dicts, max_minpe
         if np.amin(la) > max_minperp: continue
         stdev = np.std(la / np.amax(la))
         d = {k:v for v,k,_ in loss}
-        for k in ['unconditional', 'none']:
-            try:
-                if d['all'] > d[k]:
-                    stdev = -stdev
-                    break
-            except KeyError:
-                pass
+        if sort_helpful != 'none':
+            if sort_helpful == 'neg':
+                stdev = -stdev
+            for k in ['unconditional', 'none']:
+                try:
+                    if d['all'] > d[k]:
+                        stdev = -stdev
+                        break
+                except KeyError:
+                    pass
         aux_ = {k:v[i] for k,v in aux.items()}
         aux_len_ = {k:v[i] for k,v in aux_len.items()}
         losses_buffer.append((stdev, x, y, loss, aux_, aux_len_))
