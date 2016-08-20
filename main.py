@@ -217,6 +217,7 @@ class LMModel(object):
             self.gate = tf.constant([0.0 for _ in xrange(config.batch_size)])
             self.gate_mean = tf.constant(0.0)
             self.gate_var = tf.constant(0.0)
+            self.transforms = []
 
             if not config.struct_only:
                 words = []
@@ -233,6 +234,7 @@ class LMModel(object):
                         embedding = tf.nn.bias_add(tf.matmul(embedding, word_transform_w,
                                                              name='word' + str(i) + '_transform'),
                                                    word_transform_b)
+                        self.transforms.append(word_transform_w)
                     words.append(embedding)
                 context = sum(words)
 
@@ -435,6 +437,8 @@ def call_session(session, m, config, vocab, zero_state, batch, profile_kwargs):
         ops = [m.perplexity, m.struct_l1, m.struct_l2, m.cost, m.final_state, m.train_op]
     else:
         ops = [m.perplexity, m.struct_l1, m.struct_l2, m.gate_mean, m.gate_var, m.cost, m.train_op]
+    if config.distance_dep:
+        ops += m.transforms
     if config.dump_results_file or (config.conditional and config.inspect == 'struct'):
         ops += [m.loss, m.gate]
 
@@ -485,7 +489,12 @@ def call_session(session, m, config, vocab, zero_state, batch, profile_kwargs):
         else:
             write_results.append((x, y, losses))
 
-    return ret[:-1]
+    transforms = []
+    if config.distance_dep:
+        transforms = ret[-config.num_steps:]
+        ret = ret[:-config.num_steps]
+
+    return ret[:-1] + [transforms]
 
 
 def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata, verbose=False):
@@ -514,8 +523,9 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
             perp, l1, l2, cost, state = call_session(session, m, config, vocab, zero_state, batch,
                                                      profile_kwargs)
         else:
-            perp, l1, l2, gate_mean, gate_var, cost = call_session(session, m, config, vocab, None,
-                                                                   batch, profile_kwargs)
+            perp, l1, l2, gate_mean, gate_var, cost, transforms = call_session(session, m, config,
+                                                                               vocab, None, batch,
+                                                                               profile_kwargs)
 
         if config.profile:
             tl = timeline.Timeline(run_metadata.step_stats)
@@ -559,6 +569,11 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
                        shortterm_iters * config.num_steps * config.batch_size / (time.time() - \
                                                                                  start_time),
                        shortterm_iters * config.batch_size / (time.time() - start_time)))
+                if config.distance_dep:
+                    print "        position transforms ",
+                    for pos in xrange(config.num_steps):
+                        print ' norm%d: %.3f' % (pos, np.linalg.norm(transforms[pos])),
+                    print
             shortterm_perps = 0.0
             shortterm_l1s = 0.0
             shortterm_l2s = 0.0
