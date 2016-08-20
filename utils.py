@@ -270,6 +270,23 @@ def inspect_embs(session, m, config, vocab):
                                      cfd.get(feat, {}))
 
 
+def inspect_transforms(session, m, config):
+    transforms = session.run(m.transforms)
+    half = config.num_steps // 2
+    for i in xrange(half-1, -1, -1):
+        print '\nDistance', (half - i)
+        print
+        left, right = transforms[i], transforms[config.num_steps - i - 1]
+        print 'Matrix shape', left.shape
+        print 'Norms', np.linalg.norm(left), np.linalg.norm(right)
+        print 'Norm of element-wise product', np.linalg.norm(left * right)
+        print 'Norm of products', np.linalg.norm(np.dot(np.transpose(left), right)), \
+                                  np.linalg.norm(np.dot(np.transpose(right), left))
+        print 'Norm of difference', np.linalg.norm(left - right)
+        print 'Norm of sum', np.linalg.norm(left + right)
+        print
+
+
 #XXX Unused
 def inspect_feature_sparsity(feat, embedding, config, vocab, verbose=False, graph=True):
     print '\n\n' + feat + '\n'

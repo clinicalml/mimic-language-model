@@ -648,6 +648,8 @@ def main(_):
 
         if config.inspect == 'embs':
             utils.inspect_embs(session, m, config, vocab)
+        elif config.inspect == 'transforms':
+            utils.inspect_transforms(session, m, config)
         elif config.inspect == 'compare':
             utils.inspect_compare(config, vocab)
         else:
