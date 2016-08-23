@@ -122,6 +122,9 @@ class LMModel(object):
                                                       name='struct_dropout_varlen.'+feat)
                     reduced = tf.reduce_sum(val_embedding, 1,
                                             name='sum_struct_val_embeddings.'+feat)
+                    if config.mean_varlen_embs:
+                        reduced /= tf.reshape(tf.maximum(self.aux_data_len[feat], 1),
+                                              [config.batch_size, 1], name='struct_mean_reshape')
                 else:
                     reduced = tf.squeeze(val_embedding, [1])
                     if config.training and config.struct_keep_prob < 1:

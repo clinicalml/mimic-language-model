@@ -42,6 +42,8 @@ flags.DEFINE_integer("softmax_samples",  1000,    "Number of classes to sample f
 flags.DEFINE_float  ("keep_prob",        1.0,     "Dropout keep probability")
 flags.DEFINE_float  ("struct_keep_prob", 1.0,     "Structural info dropout keep probability")
 flags.DEFINE_float  ("gate_bias",        0.0,     "Initial bias before the gate sigmoid")
+flags.DEFINE_bool   ("mean_varlen_embs", False,   "Mean variable-len struct embeddings instead " \
+                                                  "of sum")
 flags.DEFINE_integer("batch_size",       32,      "Batch size")
 flags.DEFINE_integer("print_every",      500,     "Print every these many steps")
 flags.DEFINE_integer("save_every",       10000,   "Save every these many steps")
