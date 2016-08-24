@@ -339,20 +339,8 @@ class LMModel(object):
 
         structured_inputs = None
         if config.conditional:
-            fake = config.fake_struct
-            if fake != 'none':
-                emb_size = sum(config.mimic_embeddings.values())
-                if fake == 'random':
-                    structured_inputs = tf.truncated_normal([config.batch_size, emb_size])
-                    self.struct_l1 = tf.abs(tf.truncated_normal([], stddev=100.0))
-                    self.struct_l2 = tf.abs(tf.truncated_normal([], stddev=100.0))
-                else: # zeros
-                    structured_inputs = tf.constant(0.0, shape=[config.batch_size, emb_size])
-                    self.struct_l1 = tf.constant(0.0)
-                    self.struct_l2 = tf.constant(0.0)
-            else:
-                structured_inputs, self.struct_l1, self.struct_l2 = self.struct_embeddings(config,
-                                                                                           vocab)
+            structured_inputs, self.struct_l1, self.struct_l2 = self.struct_embeddings(config,
+                                                                                       vocab)
         else:
             self.struct_l1 = tf.constant(0.0)
             self.struct_l2 = tf.constant(0.0)
