@@ -587,12 +587,16 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
             shortterm_costs = 0.0
             shortterm_iters = 0
             start_time = time.time()
-        if config.training and step and step % config.save_every == 0:
-            if verbose: print "Saving model (epoch perplexity: %.3f) ..." % np.exp(perps / iters)
-            save_file = saver.save(session, config.save_file)
-            if verbose: print "Saved to", save_file
 
         cur_iters = steps + iters
+        if config.training and step and step % config.save_every == 0:
+            save_file = config.save_file
+            if not config.save_overwrite:
+                save_file = save_file + '.' + str(cur_iters)
+            if verbose: print "Saving model (epoch perplexity: %.3f) ..." % np.exp(perps / iters)
+            save_file = saver.save(session, save_file)
+            if verbose: print "Saved to", save_file
+
         if cur_iters >= config.max_steps:
             break
         elif config.training and cur_iters >= config.decay_step and not m.decayed:

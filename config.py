@@ -6,7 +6,7 @@ flags = tf.flags
 
 # command-line config
 flags.DEFINE_string ("data_path",           "data",              "Data path")
-flags.DEFINE_string ("save_file",           "models/recent.dat", "Save file")
+flags.DEFINE_string ("save_file",           "models/recent.dat", "Save file prefix")
 flags.DEFINE_string ("timeline_file",       "timeline.json",     "File to save profiling " \
                                                                  "information to")
 flags.DEFINE_string ("load_file",           "",                  "File to load model from")
@@ -47,6 +47,7 @@ flags.DEFINE_bool   ("mean_varlen_embs", False,   "Mean variable-len struct embe
 flags.DEFINE_integer("batch_size",       32,      "Batch size")
 flags.DEFINE_integer("print_every",      500,     "Print every these many steps")
 flags.DEFINE_integer("save_every",       10000,   "Save every these many steps")
+flags.DEFINE_bool   ("save_overwrite",   True,    "Overwrite the same file each time")
 flags.DEFINE_bool   ("pretrained_emb",   False,   "Use pretrained embeddings")
 flags.DEFINE_bool   ("conditional",      True,    "Use a conditional language model")
 flags.DEFINE_bool   ("training",         True,    "Training mode, turn off for testing")
