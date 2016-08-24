@@ -173,14 +173,21 @@ class LMModel(object):
 
     def rnn_loss(self, outputs, config):
         output = tf.reshape(tf.concat(1, outputs), [-1, config.hidden_size])
-        softmax_w = tf.get_variable("softmax_w", [config.hidden_size, config.vocab_size],
+        softmax_w = tf.get_variable("softmax_w", [config.vocab_size, config.hidden_size],
                                     initializer=tf.contrib.layers.xavier_initializer())
         softmax_b = tf.get_variable("softmax_b", [config.vocab_size],
                                     initializer=tf.zeros_initializer)
-        logits = tf.nn.bias_add(tf.matmul(output, softmax_w, name='softmax_transform'), softmax_b)
-        loss = tf.nn.seq2seq.sequence_loss_by_example([logits],
-                                                      [tf.reshape(self.targets, [-1])],
-                                                      [tf.reshape(self.mask, [-1])])
+        if config.training and config.softmax_samples < config.vocab_size:
+            targets = tf.reshape(self.targets, [-1, 1])
+            mask = tf.reshape(self.mask, [-1])
+            loss = tf.nn.sampled_softmax_loss(softmax_w, softmax_b, output, targets,
+                                              config.softmax_samples, config.vocab_size) * mask
+        else:
+            logits = tf.nn.bias_add(tf.matmul(output, tf.transpose(softmax_w),
+                                              name='softmax_transform'), softmax_b)
+            loss = tf.nn.seq2seq.sequence_loss_by_example([logits],
+                                                          [tf.reshape(self.targets, [-1])],
+                                                          [tf.reshape(self.mask, [-1])])
         return tf.reshape(loss, [config.batch_size, config.num_steps])
 
 
@@ -640,7 +647,7 @@ def main(_):
                     m.assign_lr(session, config.learning_rate2)
                     m.decayed = True
                 if config.training:
-                    print "Epoch: %d Learning rate: %.3f" % (i + 1, session.run(m.lr))
+                    print "Epoch: %d Learning rate: %.4f" % (i + 1, session.run(m.lr))
                 perplexity, steps = run_epoch(session, m, config, vocab, saver, steps, run_options,
                                               run_metadata, verbose=True)
                 if config.training:
