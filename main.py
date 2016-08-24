@@ -586,7 +586,7 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
             shortterm_iters = 0
             start_time = time.time()
         if config.training and step and step % config.save_every == 0:
-            if verbose: print "Saving model ..."
+            if verbose: print "Saving model (epoch perplexity: %.3f) ..." % np.exp(perps / iters)
             save_file = saver.save(session, config.save_file)
             if verbose: print "Saved to", save_file
 

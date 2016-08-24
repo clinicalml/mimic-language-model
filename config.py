@@ -29,7 +29,7 @@ flags.DEFINE_integer("num_layers",       2,       "Number of LSTM layers")
 flags.DEFINE_integer("num_steps",        20,      "Number of steps to unroll for RNNs")
 flags.DEFINE_integer("context_size",     6,       "Context size for CBOW")
 flags.DEFINE_integer("hidden_size",      192,     "Hidden state size")
-flags.DEFINE_bool   ("distance_dep",     False,   "Distance-dependent word embeddings")
+flags.DEFINE_bool   ("distance_dep",     True,    "Distance-dependent word embeddings")
 flags.DEFINE_integer("word_emb_size",    256,     "Number of learnable dimensions in word " \
                                                   "embeddings")
 flags.DEFINE_float  ("struct_l1_weight", 0.0,     "Weight for minimizing L1-norm of structured " \
