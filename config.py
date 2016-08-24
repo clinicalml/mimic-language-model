@@ -22,11 +22,11 @@ flags.DEFINE_string ("load_uncond_results", "",                  "File to load u
 
 flags.DEFINE_float  ("learning_rate",    1e-3,    "Optimizer initial learning rate")
 flags.DEFINE_float  ("learning_rate2",   1e-4,    "Optimizer decayed learning rate")
-flags.DEFINE_integer("decay_step",       100000,  "Step to decay learning rate at")
-flags.DEFINE_integer("decay_epoch",      2,       "Epoch to decay learning rate at")
+flags.DEFINE_integer("decay_step",       1000000, "Step to decay learning rate at")
+flags.DEFINE_integer("decay_epoch",      3,       "Epoch to decay learning rate at")
 flags.DEFINE_float  ("max_grad_norm",    5.0,     "Gradient clipping for RNNs")
 flags.DEFINE_integer("num_layers",       2,       "Number of LSTM layers")
-flags.DEFINE_integer("num_steps",        20,      "Number of steps to unroll for RNNs")
+flags.DEFINE_integer("num_steps",        32,      "Number of steps to unroll for RNNs")
 flags.DEFINE_integer("context_size",     6,       "Context size for CBOW")
 flags.DEFINE_integer("hidden_size",      192,     "Hidden state size")
 flags.DEFINE_bool   ("distance_dep",     True,    "Distance-dependent word embeddings")
@@ -41,7 +41,6 @@ flags.DEFINE_integer("max_epoch",        6,       "Maximum number of epochs to r
 flags.DEFINE_integer("softmax_samples",  1000,    "Number of classes to sample for softmax")
 flags.DEFINE_float  ("keep_prob",        1.0,     "Dropout keep probability")
 flags.DEFINE_float  ("struct_keep_prob", 1.0,     "Structural info dropout keep probability")
-flags.DEFINE_float  ("gate_bias",        0.0,     "Initial bias before the gate sigmoid")
 flags.DEFINE_bool   ("mean_varlen_embs", False,   "Mean variable-len struct embeddings instead " \
                                                   "of sum")
 flags.DEFINE_integer("batch_size",       32,      "Batch size")
@@ -57,7 +56,7 @@ flags.DEFINE_bool   ("force_trainset",   False,   "Force training set even for t
 flags.DEFINE_string ("inspect",          'none',  "Inspect the loaded/new model (none, embs, " \
                                                   "struct, compare, transforms)")
 flags.DEFINE_bool   ("profile",          False,   "Do profiling on first batch")
-flags.DEFINE_bool   ("recurrent",        False,   "Use a recurrent language model")
+flags.DEFINE_bool   ("recurrent",        True,    "Use a recurrent language model")
 flags.DEFINE_bool   ("struct_only",      False,   "Use a model with only structured data")
 flags.DEFINE_bool   ("use_hsm",          False,   "Use two-level hierarchical softmax")
 flags.DEFINE_integer("data_rand_buffer", 25000,   "Number of buffered CBOW minibatches to " \

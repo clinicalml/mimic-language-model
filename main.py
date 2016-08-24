@@ -142,35 +142,30 @@ class LMModel(object):
         with tf.variable_scope("RNN"):
             if config.conditional:
                 emb_size = sum(config.mimic_embeddings.values())
+                assert emb_size >= config.hidden_size
                 transform_w = tf.get_variable("struct_transform_w", [emb_size, config.hidden_size],
                                               initializer=tf.contrib.layers.xavier_initializer())
-                structured_inputs = tf.matmul(structured_inputs, transform_w,
-                                              name='transform_structs')
+                transform_b = tf.get_variable("struct_transform_b", [config.hidden_size],
+                                              initializer=tf.zeros_initializer)
+                structured_inputs = tf.nn.bias_add(tf.matmul(structured_inputs, transform_w,
+                                                             name='transform_structs'),
+                                                   transform_b)
 
-            for time_step in range(config.num_steps):
+            for time_step in xrange(config.num_steps):
                 if time_step > 0: tf.get_variable_scope().reuse_variables()
                 (cell_output, state) = cell(inputs[:, time_step, :], state)
                 if config.conditional:
-                    if config.training and config.struct_keep_prob < 1: # TODO remove
-                        dropped_inputs = tf.nn.dropout(structured_inputs, config.struct_keep_prob,
-                                                       noise_shape=[config.batch_size, 1],
-                                                       name='old_struct_dropout')
-                    else:
-                        dropped_inputs = structured_inputs
-                    # state is:           batch_size x 2 * size * num_layers
-                    # dropped_inputs is:  batch_size x size
-                    # concat is:          batch_size x size * (1 + (2 * num_layers))
-                    concat = tf.concat(1, [state, dropped_inputs], name='gate_concat')
+                    # state is:              batch_size x 2 * size * num_layers
+                    # structured_inputs is:  batch_size x size
                     gate_w = tf.get_variable("struct_gate_w",
-                                             [config.hidden_size * (1 + (2 * config.num_layers)),
+                                             [2 * config.hidden_size * config.num_layers,
                                               config.hidden_size],
                                              initializer=tf.contrib.layers.xavier_initializer())
                     gate_b = tf.get_variable("struct_gate_b", [config.hidden_size],
                                              initializer=tf.ones_initializer)
-                    gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(concat, gate_w,
-                                                               name='gate_transform'),
-                                                     gate_b))
-                    outputs.append(((1 - gate) * cell_output) + (gate * structured_inputs))
+                    gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(state, gate_w,
+                                                               name='gate_transform'), gate_b))
+                    outputs.append((gate * cell_output) + ((1.0 - gate) * structured_inputs))
                 else:
                     outputs.append(cell_output)
         return outputs, state
@@ -181,8 +176,8 @@ class LMModel(object):
         softmax_w = tf.get_variable("softmax_w", [config.hidden_size, config.vocab_size],
                                     initializer=tf.contrib.layers.xavier_initializer())
         softmax_b = tf.get_variable("softmax_b", [config.vocab_size],
-                                    initializer=tf.ones_initializer)
-        logits = tf.matmul(output, softmax_w, name='softmax_transform') + softmax_b
+                                    initializer=tf.zeros_initializer)
+        logits = tf.nn.bias_add(tf.matmul(output, softmax_w, name='softmax_transform'), softmax_b)
         loss = tf.nn.seq2seq.sequence_loss_by_example([logits],
                                                       [tf.reshape(self.targets, [-1])],
                                                       [tf.reshape(self.mask, [-1])])
