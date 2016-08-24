@@ -399,7 +399,9 @@ class LMModel(object):
             self.train_op = tf.no_op()
 
 
-    def assign_lr(self, session, lr_value):
+    def assign_lr(self, session, lr_value, verbose=True):
+        if verbose:
+            print "Setting learning rate to", lr_value
         session.run(tf.assign(self.lr, lr_value))
 
 
