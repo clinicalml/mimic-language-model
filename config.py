@@ -24,7 +24,7 @@ flags.DEFINE_float  ("learning_rate",    1e-3,    "Optimizer initial learning ra
 flags.DEFINE_float  ("learning_rate2",   1e-4,    "Optimizer decayed learning rate")
 flags.DEFINE_integer("decay_step",       100000,  "Step to decay learning rate at")
 flags.DEFINE_integer("decay_epoch",      2,       "Epoch to decay learning rate at")
-flags.DEFINE_float  ("max_grad_norm",    -1,      "Gradient clipping")
+flags.DEFINE_float  ("max_grad_norm",    5.0,     "Gradient clipping for RNNs")
 flags.DEFINE_integer("num_layers",       2,       "Number of LSTM layers")
 flags.DEFINE_integer("num_steps",        20,      "Number of steps to unroll for RNNs")
 flags.DEFINE_integer("context_size",     6,       "Context size for CBOW")

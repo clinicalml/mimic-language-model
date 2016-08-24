@@ -138,7 +138,6 @@ class LMModel(object):
 
     def rnn(self, inputs, structured_inputs, cell, config):
         outputs = []
-        nocond_outputs = [] # to verify if conditioning is helping, and if so, where
         state = self.initial_state
         with tf.variable_scope("RNN"):
             if config.conditional:
@@ -162,8 +161,6 @@ class LMModel(object):
                     # dropped_inputs is:  batch_size x size
                     # concat is:          batch_size x size * (1 + (2 * num_layers))
                     concat = tf.concat(1, [state, dropped_inputs], name='gate_concat')
-                    nocond_concat = tf.concat(1, [state, tf.zeros_like(dropped_inputs)],
-                                              name='nocond_gate_concat')
                     gate_w = tf.get_variable("struct_gate_w",
                                              [config.hidden_size * (1 + (2 * config.num_layers)),
                                               config.hidden_size],
@@ -173,39 +170,23 @@ class LMModel(object):
                     gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(concat, gate_w,
                                                                name='gate_transform'),
                                                      gate_b))
-                    nocond_gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(nocond_concat, gate_w,
-                                                                     name='nocond_gate_transform'),
-                                                            gate_b))
                     outputs.append(((1 - gate) * cell_output) + (gate * structured_inputs))
-                    nocond_outputs.append((1 - nocond_gate) * cell_output)
                 else:
                     outputs.append(cell_output)
-        return outputs, state, nocond_outputs
+        return outputs, state
 
 
-    def rnn_loss(self, outputs, nocond_outputs, config):
+    def rnn_loss(self, outputs, config):
         output = tf.reshape(tf.concat(1, outputs), [-1, config.hidden_size])
-        if config.conditional:
-            nocond_output = tf.reshape(tf.concat(1, nocond_outputs), [-1, config.hidden_size])
         softmax_w = tf.get_variable("softmax_w", [config.hidden_size, config.vocab_size],
                                     initializer=tf.contrib.layers.xavier_initializer())
         softmax_b = tf.get_variable("softmax_b", [config.vocab_size],
                                     initializer=tf.ones_initializer)
         logits = tf.matmul(output, softmax_w, name='softmax_transform') + softmax_b
-        if config.conditional:
-            nocond_logits = tf.matmul(nocond_output, softmax_w,
-                                      name='nocond_softmax_transform') + softmax_b
         loss = tf.nn.seq2seq.sequence_loss_by_example([logits],
                                                       [tf.reshape(self.targets, [-1])],
                                                       [tf.reshape(self.mask, [-1])])
-        if config.conditional:
-            nocond_loss = tf.nn.seq2seq.sequence_loss_by_example([nocond_logits],
-                                                                 [tf.reshape(self.targets, [-1])],
-                                                                 [tf.reshape(self.mask, [-1])])
-            return tf.reshape(loss, [config.batch_size, config.num_steps]), \
-                   tf.reshape(nocond_loss, [config.batch_size, config.num_steps])
-        else:
-            return tf.reshape(loss, [config.batch_size, config.num_steps]), None
+        return tf.reshape(loss, [config.batch_size, config.num_steps])
 
 
     def ff(self, inputs, structured_inputs, config):
@@ -377,9 +358,8 @@ class LMModel(object):
             self.struct_l2 = tf.constant(0.0)
 
         if config.recurrent:
-            outputs, self.final_state, nocond_outputs = self.rnn(inputs, structured_inputs, cell,
-                                                                 config)
-            self.loss, self.nocond_loss = self.rnn_loss(outputs, nocond_outputs, config)
+            outputs, self.final_state = self.rnn(inputs, structured_inputs, cell, config)
+            self.loss = self.rnn_loss(outputs, config)
         else:
             output = self.ff(inputs, structured_inputs, config)
             if config.use_hsm:
@@ -417,7 +397,7 @@ class LMModel(object):
             optimizer = tf.train.AdadeltaOptimizer(self.lr)
         tvars = tf.trainable_variables()
         grads = tf.gradients(self.cost, tvars)
-        if config.max_grad_norm > 0:
+        if config.recurrent and config.max_grad_norm > 0:
             grads, _ = tf.clip_by_global_norm(grads, config.max_grad_norm)
         return optimizer.apply_gradients(zip(grads, tvars))
 
