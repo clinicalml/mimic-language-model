@@ -175,7 +175,8 @@ def _mimic_iterator_unbuffered(config, vocab):
 def mimic_iterator(config, vocab):
     random.seed(0) # make deterministic
     if config.recurrent:
-        yield _mimic_iterator_unbuffered(config, vocab)
+        for data in _mimic_iterator_unbuffered(config, vocab):
+            yield data
     else:
         batches = []
         for data in _mimic_iterator_unbuffered(config, vocab):

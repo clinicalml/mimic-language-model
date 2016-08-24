@@ -62,11 +62,11 @@ class LMModel(object):
 
 
     def rnn_cell(self, config):
-        lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(config.hidden_size, name='lstm_cell')
+        lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(config.hidden_size)
         if config.training and config.keep_prob < 1:
             lstm_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, output_keep_prob=config.keep_prob,
                                                       name='lstm_dropout')
-        return tf.nn.rnn_cell.MultiRNNCell([lstm_cell] * config.num_layers, name='multirnn')
+        return tf.nn.rnn_cell.MultiRNNCell([lstm_cell] * config.num_layers)
 
 
     def word_embeddings(self, config, vocab):
@@ -422,7 +422,7 @@ class LMModel(object):
         return optimizer.apply_gradients(zip(grads, tvars))
 
 
-def call_session(session, m, config, vocab, zero_state, batch, profile_kwargs):
+def call_session(session, m, config, vocab, prev_state, zero_state, batch, profile_kwargs):
     x, y, mask, aux, aux_len, new_batch = batch
     f_dict = {m.input_data: x, m.targets: y}
     if config.recurrent:
@@ -430,7 +430,7 @@ def call_session(session, m, config, vocab, zero_state, batch, profile_kwargs):
         if new_batch:
             f_dict[m.initial_state] = zero_state
         else:
-            f_dict[m.initial_state] = state
+            f_dict[m.initial_state] = prev_state
     if config.conditional:
         for feat, vals in aux.items():
             f_dict[m.aux_data[feat]] = vals
@@ -442,64 +442,68 @@ def call_session(session, m, config, vocab, zero_state, batch, profile_kwargs):
         ops = [m.perplexity, m.struct_l1, m.struct_l2, m.cost, m.final_state, m.train_op]
     else:
         ops = [m.perplexity, m.struct_l1, m.struct_l2, m.gate_mean, m.gate_var, m.cost, m.train_op]
-    if config.distance_dep:
-        ops += m.transforms
-    if config.dump_results_file or (config.conditional and config.inspect == 'struct'):
-        ops += [m.loss, m.gate]
+        if config.distance_dep:
+            ops += m.transforms
+        if config.dump_results_file or (config.conditional and config.inspect == 'struct'):
+            ops += [m.loss, m.gate]
 
     ret = session.run(ops, f_dict, **profile_kwargs)
 
-    if config.dump_results_file or (config.conditional and config.inspect == 'struct'):
-        loss, gate = ret[-2:]
-        ret = ret[:-2]
+    if not config.recurrent:
+        if config.dump_results_file or (config.conditional and config.inspect == 'struct'):
+            loss, gate = ret[-2:]
+            ret = ret[:-2]
 
-        losses = [[] for _ in xrange(config.batch_size)]
-        for i in xrange(config.batch_size):
-            if config.conditional:
-                losses[i].append((loss[i], 'all', gate[i]))
-            else:
-                losses[i].append((loss[i], 'unconditional', gate[i]))
+            losses = [[] for _ in xrange(config.batch_size)]
+            for i in xrange(config.batch_size):
+                if config.conditional:
+                    losses[i].append((loss[i], 'all', gate[i]))
+                else:
+                    losses[i].append((loss[i], 'unconditional', gate[i]))
 
-    #inspect before returning
-    if config.conditional and config.inspect == 'struct':
-        feats = m.struct_enable.keys()
-        for v in m.struct_enable.values():
-            f_dict[v] = 0.0
-        loss, gate = session.run([m.loss, m.gate], f_dict)
-        for i in xrange(config.batch_size):
-            losses[i].append((loss[i], 'none', gate[i]))
-        for only in [True, False]:
-            for feat in feats:
-                for v in m.struct_enable.values():
+        #inspect before returning
+        if config.conditional and config.inspect == 'struct':
+            feats = m.struct_enable.keys()
+            for v in m.struct_enable.values():
+                f_dict[v] = 0.0
+            loss, gate = session.run([m.loss, m.gate], f_dict)
+            for i in xrange(config.batch_size):
+                losses[i].append((loss[i], 'none', gate[i]))
+            for only in [True, False]:
+                for feat in feats:
+                    for v in m.struct_enable.values():
+                        if only:
+                            f_dict[v] = 0.0
+                        else:
+                            f_dict[v] = 1.0
                     if only:
-                        f_dict[v] = 0.0
+                        f_dict[m.struct_enable[feat]] = 1.0
                     else:
-                        f_dict[v] = 1.0
-                if only:
-                    f_dict[m.struct_enable[feat]] = 1.0
-                else:
-                    f_dict[m.struct_enable[feat]] = 0.0
-                if only:
-                    s = 'only_'
-                else:
-                    s = 'no_'
-                loss, gate = session.run([m.loss, m.gate], f_dict)
-                for i in xrange(config.batch_size):
-                    losses[i].append((loss[i], s+feat, gate[i]))
+                        f_dict[m.struct_enable[feat]] = 0.0
+                    if only:
+                        s = 'only_'
+                    else:
+                        s = 'no_'
+                    loss, gate = session.run([m.loss, m.gate], f_dict)
+                    for i in xrange(config.batch_size):
+                        losses[i].append((loss[i], s+feat, gate[i]))
 
-    if config.dump_results_file:
-        global write_results
-        if config.conditional:
-            write_results.append((x, y, losses, aux, aux_len))
-        else:
-            write_results.append((x, y, losses))
+        if config.dump_results_file:
+            global write_results
+            if config.conditional:
+                write_results.append((x, y, losses, aux, aux_len))
+            else:
+                write_results.append((x, y, losses))
 
-    transforms = []
-    if config.distance_dep:
-        transforms = ret[-config.num_steps:]
-        ret = ret[:-config.num_steps]
+        transforms = []
+        if config.distance_dep:
+            transforms = ret[-config.num_steps:]
+            ret = ret[:-config.num_steps]
 
-    return ret[:-1] + [transforms]
+        return ret[:-1] + [transforms]
+
+    else: # recurrent
+        return ret[:-1]
 
 
 def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata, verbose=False):
@@ -518,6 +522,7 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
     batches = 0
     if config.recurrent:
         zero_state = m.initial_state.eval()
+        state = None
     for step, batch in enumerate(reader.mimic_iterator(config, vocab)):
         profile_kwargs = {}
         if config.profile:
@@ -525,8 +530,8 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
             profile_kwargs['run_metadata'] = run_metadata
 
         if config.recurrent:
-            perp, l1, l2, cost, state = call_session(session, m, config, vocab, zero_state, batch,
-                                                     profile_kwargs)
+            perp, l1, l2, cost, state = call_session(session, m, config, vocab, state, zero_state,
+                                                     batch, profile_kwargs)
         else:
             perp, l1, l2, gate_mean, gate_var, cost, transforms = call_session(session, m, config,
                                                                                vocab, None, batch,
@@ -544,8 +549,9 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
         shortterm_perps += perp
         shortterm_l1s += l1
         shortterm_l2s += l2
-        shortterm_gate_means += gate_mean
-        shortterm_gate_vars += gate_var
+        if not config.recurrent:
+            shortterm_gate_means += gate_mean
+            shortterm_gate_vars += gate_var
         shortterm_costs += cost
         if config.recurrent:
             iters += config.num_steps
@@ -558,8 +564,9 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
             avg_perp = shortterm_perps / shortterm_iters
             avg_l1 = shortterm_l1s / shortterm_iters
             avg_l2 = shortterm_l2s / shortterm_iters
-            avg_gate_mean = shortterm_gate_means / shortterm_iters
-            avg_gate_var = shortterm_gate_vars / shortterm_iters
+            if not config.recurrent:
+                avg_gate_mean = shortterm_gate_means / shortterm_iters
+                avg_gate_var = shortterm_gate_vars / shortterm_iters
             avg_cost = shortterm_costs / shortterm_iters
             if config.recurrent:
                 print("%d  perplexity: %.3f  ml_loss: %.5f  struct_l1: %.6f  struct_l2: %.6f  " \
