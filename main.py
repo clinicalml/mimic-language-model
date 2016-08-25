@@ -565,7 +565,7 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
             shortterm_iters = 0
             start_time = time.time()
 
-        cur_iters = steps + iters
+        cur_iters = steps + step
         if config.training and step and step % config.save_every == 0:
             save_file = config.save_file
             if not config.save_overwrite:
@@ -580,7 +580,7 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
             m.assign_lr(session, config.learning_rate2)
             m.decayed = True
 
-    return np.exp(perps / iters), steps + iters
+    return np.exp(perps / iters), steps + step
 
 
 def main(_):
