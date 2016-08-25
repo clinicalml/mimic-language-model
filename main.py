@@ -504,8 +504,7 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
                                                      batch, profile_kwargs)
         else:
             perp, l1, l2, gate_mean, gate_var, cost, transforms = call_session(session, m, config,
-                                                                               vocab, None, batch,
-                                                                               profile_kwargs)
+                                                     vocab, None, None, batch, profile_kwargs)
 
         if config.profile:
             tl = timeline.Timeline(run_metadata.step_stats)
