@@ -69,11 +69,17 @@ def _inspect_losses(x, y, config, vocab, loss, aux, aux_len, dicts):
         elif v.startswith('only_'): color = Colors.OKBLUE
         else: color = Colors.WARNING
         print_color(v.ljust(20), color)
-        print 'gate min %.6f, max %.6f, avg %.6f, std %.6f' % (np.min(g), np.max(g),
-                                                               np.mean(g), np.std(g))
+        print
+    print
+    gate = zip([k for k,v in config.mimic_embeddings.items() if v > 0], [v for v in g])
+    print_color('gates', Colors.HEADER)
+    print
+    for k,v in gate:
+        print k, '%.4f' % v
     print
     for feat, v in aux.items():
-        print feat
+        print_color(feat, Colors.HEADER)
+        print
         if feat in config.var_len_features:
             print ', '.join([str(dicts.get(feat, {}).get(vocab.aux_list[feat][val], val))
                                 for val in v[:aux_len[feat]]])

@@ -155,6 +155,7 @@ class LMModel(object):
                 if time_step > 0: tf.get_variable_scope().reuse_variables()
                 (cell_output, state) = cell(inputs[:, time_step, :], state)
                 if config.conditional:
+                    # TODO: update gate design (see ff)
                     # state is:              batch_size x 2 * size * num_layers
                     # structured_inputs is:  batch_size x size
                     gate_w = tf.get_variable("struct_gate_w",
@@ -201,8 +202,6 @@ class LMModel(object):
 
         with tf.variable_scope("FF"):
             self.gate = tf.constant([0.0 for _ in xrange(config.batch_size)])
-            self.gate_mean = tf.constant(0.0)
-            self.gate_var = tf.constant(0.0)
             self.transforms = []
 
             if not config.struct_only:
@@ -242,6 +241,25 @@ class LMModel(object):
                     context = tf.nn.dropout(context, config.keep_prob)
 
             if config.conditional:
+                if not config.struct_only:
+                    num_feats = len([v for v in config.mimic_embeddings.values() if v > 0])
+                    gate1_w = tf.get_variable("struct_gate1_w", [config.hidden_size, num_feats],
+                                              initializer=tf.contrib.layers.xavier_initializer())
+                    gate1_b = tf.get_variable("struct_gate1_b", [num_feats],
+                                              initializer=tf.zeros_initializer)
+                    self.gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(context, gate1_w,
+                                                                    name='gate_transform1'),
+                                                          gate1_b))
+                    sections = []
+                    prev_dims = 0
+                    for i, (feat, dims) in enumerate(config.mimic_embeddings.items()):
+                        if dims <= 0: continue
+                        gate_slice = tf.slice(self.gate, [0, i], [-1, 1])
+                        struct_slice = tf.slice(structured_inputs, [0, prev_dims], [-1, dims])
+                        prev_dims += dims
+                        sections.append(gate_slice * struct_slice)
+                    structured_inputs = tf.concat(1, sections)
+
                 transform1_w = tf.get_variable("struct_transform1_w", [emb_size,
                                                                        config.hidden_size],
                                                initializer=tf.contrib.layers.xavier_initializer())
@@ -251,21 +269,21 @@ class LMModel(object):
                                                              name='struct_transform1'),
                                                    transform1_b)
 
-                if config.training and config.keep_prob < 1:
+                if config.training and config.keep_prob < 1: #XXX this is probably wrong here
                     structured_inputs = tf.nn.dropout(structured_inputs, config.keep_prob)
 
                 if not config.struct_only:
-                    gate1_w = tf.get_variable("struct_gate1_w", [config.hidden_size,
-                                                                 config.hidden_size],
-                                              initializer=tf.contrib.layers.xavier_initializer())
-                    gate1_b = tf.get_variable("struct_gate1_b", [config.hidden_size],
-                                              initializer=tf.zeros_initializer)
-                    self.gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(context, gate1_w,
-                                                                    name='gate_transform1'),
-                                                          gate1_b))
-
-                    self.gate_mean, self.gate_var = tf.nn.moments(self.gate, [0, 1])
-                    context = (self.gate * context) + ((1.0 - self.gate) * structured_inputs)
+                    context = tf.concat(1, [context, structured_inputs])
+                    concat_transform_w = tf.get_variable("concat_transform_w",
+                                                         [2 * config.hidden_size,
+                                                          config.hidden_size],
+                                                initializer=tf.contrib.layers.xavier_initializer())
+                    concat_transform_b = tf.get_variable("concat_transform_b",
+                                                         [config.hidden_size],
+                                                         initializer=tf.zeros_initializer)
+                    context = tf.nn.bias_add(tf.matmul(context, concat_transform_w,
+                                                       name='concat_transform'),
+                                             concat_transform_b)
                 else:
                     context = structured_inputs
 
@@ -411,7 +429,7 @@ def call_session(session, m, config, vocab, prev_state, zero_state, batch, profi
     if config.recurrent:
         ops = [m.perplexity, m.struct_l1, m.struct_l2, m.cost, m.final_state, m.train_op]
     else:
-        ops = [m.perplexity, m.struct_l1, m.struct_l2, m.gate_mean, m.gate_var, m.cost, m.train_op]
+        ops = [m.perplexity, m.struct_l1, m.struct_l2, m.cost, m.train_op]
         if config.distance_dep:
             ops += m.transforms
         if config.dump_results_file or (config.conditional and config.inspect == 'struct'):
@@ -485,8 +503,6 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
     shortterm_perps = 0.0
     shortterm_l1s = 0.0
     shortterm_l2s = 0.0
-    shortterm_gate_means = 0.0
-    shortterm_gate_vars = 0.0
     shortterm_costs = 0.0
     shortterm_iters = 0
     batches = 0
@@ -503,8 +519,8 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
             perp, l1, l2, cost, state = call_session(session, m, config, vocab, state, zero_state,
                                                      batch, profile_kwargs)
         else:
-            perp, l1, l2, gate_mean, gate_var, cost, transforms = call_session(session, m, config,
-                                                     vocab, None, None, batch, profile_kwargs)
+            perp, l1, l2, cost, transforms = call_session(session, m, config, vocab, None, None,
+                                                          batch, profile_kwargs)
 
         if config.profile:
             tl = timeline.Timeline(run_metadata.step_stats)
@@ -518,9 +534,6 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
         shortterm_perps += perp
         shortterm_l1s += l1
         shortterm_l2s += l2
-        if not config.recurrent:
-            shortterm_gate_means += gate_mean
-            shortterm_gate_vars += gate_var
         shortterm_costs += cost
         if config.recurrent:
             iters += config.num_steps
@@ -533,20 +546,16 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
             avg_perp = shortterm_perps / shortterm_iters
             avg_l1 = shortterm_l1s / shortterm_iters
             avg_l2 = shortterm_l2s / shortterm_iters
-            if not config.recurrent:
-                avg_gate_mean = shortterm_gate_means / shortterm_iters
-                avg_gate_var = shortterm_gate_vars / shortterm_iters
             avg_cost = shortterm_costs / shortterm_iters
             if config.recurrent:
-                print("%d  perplexity: %.3f  ml_loss: %.5f  struct_l1: %.6f  struct_l2: %.6f  " \
+                print("%d  perplexity: %.3f  ml_loss: %.4f  struct_l1: %.4f  struct_l2: %.4f  " \
                       "cost: %.4f  speed: %.0f wps" %
                       (step, np.exp(avg_perp), avg_perp, avg_l1, avg_l2, avg_cost,
                        shortterm_iters * config.batch_size / (time.time() - start_time)))
             else:
                 print("%d  perplexity: %.3f  ml_loss: %.4f  struct_l1: %.4f  struct_l2: %.4f  " \
-                      "cost: %.4f  gate_mean: %.4f  gate_std: %.4f  speed: %.0f wps %.0f pps" %
-                      (step, np.exp(avg_perp), avg_perp, avg_l1, avg_l2, avg_cost, avg_gate_mean,
-                       np.sqrt(avg_gate_var),
+                      "cost: %.4f  speed: %.0f wps %.0f pps" %
+                      (step, np.exp(avg_perp), avg_perp, avg_l1, avg_l2, avg_cost,
                        shortterm_iters * config.num_steps * config.batch_size / (time.time() - \
                                                                                  start_time),
                        shortterm_iters * config.batch_size / (time.time() - start_time)))
@@ -558,8 +567,6 @@ def run_epoch(session, m, config, vocab, saver, steps, run_options, run_metadata
             shortterm_perps = 0.0
             shortterm_l1s = 0.0
             shortterm_l2s = 0.0
-            shortterm_gate_means = 0.0
-            shortterm_gate_vars = 0.0
             shortterm_costs = 0.0
             shortterm_iters = 0
             start_time = time.time()
