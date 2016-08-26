@@ -56,7 +56,7 @@ flags.DEFINE_bool   ("force_trainset",   False,   "Force training set even for t
 flags.DEFINE_string ("inspect",          'none',  "Inspect the loaded/new model (none, embs, " \
                                                   "struct, compare, transforms)")
 flags.DEFINE_bool   ("profile",          False,   "Do profiling on first batch")
-flags.DEFINE_bool   ("recurrent",        True,    "Use a recurrent language model")
+flags.DEFINE_bool   ("recurrent",        False,   "Use a recurrent language model")
 flags.DEFINE_bool   ("struct_only",      False,   "Use a model with only structured data")
 flags.DEFINE_bool   ("use_hsm",          False,   "Use two-level hierarchical softmax")
 flags.DEFINE_integer("data_rand_buffer", 25000,   "Number of buffered CBOW minibatches to " \
