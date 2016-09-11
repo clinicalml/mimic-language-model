@@ -242,14 +242,32 @@ class LMModel(object):
 
             if config.conditional:
                 if not config.struct_only:
-                    num_feats = len([v for v in config.mimic_embeddings.values() if v > 0])
-                    gate1_w = tf.get_variable("struct_gate1_w", [config.hidden_size, num_feats],
+                    dim_list = [v for v in config.mimic_embeddings.values() if v > 0]
+                    num_feats = len(dim_list)
+
+                    context_lin_w = tf.get_variable("context_lin_w", [config.hidden_size,
+                                                                      num_feats+1],
+                                                initializer=tf.contrib.layers.xavier_initializer())
+                    # for a residual connection
+                    context_linear = tf.matmul(context, context_lin_w,
+                                               name='context_lin_transform')
+
+                    gate1_w = tf.get_variable("struct_gate1_w", [config.hidden_size,
+                                                                 config.hidden_size],
                                               initializer=tf.contrib.layers.xavier_initializer())
-                    gate1_b = tf.get_variable("struct_gate1_b", [num_feats],
+                    gate1_b = tf.get_variable("struct_gate1_b", [config.hidden_size],
+                                              initializer=tf.ones_initializer)
+                    context2 = tf.nn.relu(tf.nn.bias_add(tf.matmul(context, gate1_w,
+                                                                   name='gate_transform1'),
+                                                         gate1_b))
+
+                    gate2_w = tf.get_variable("struct_gate2_w", [config.hidden_size, num_feats+1],
+                                              initializer=tf.contrib.layers.xavier_initializer())
+                    gate2_b = tf.get_variable("struct_gate2_b", [num_feats+1],
                                               initializer=tf.zeros_initializer)
-                    self.gate = tf.sigmoid(tf.nn.bias_add(tf.matmul(context, gate1_w,
-                                                                    name='gate_transform1'),
-                                                          gate1_b))
+                    self.gate = tf.nn.softmax(tf.nn.bias_add(tf.matmul(context2, gate2_w,
+                                                                       name='gate_transform2'),
+                                                             gate2_b) + context_linear)
                     sections = []
                     prev_dims = 0
                     for i, (feat, dims) in enumerate(config.mimic_embeddings.items()):
@@ -258,32 +276,41 @@ class LMModel(object):
                         struct_slice = tf.slice(structured_inputs, [0, prev_dims], [-1, dims])
                         prev_dims += dims
                         sections.append(gate_slice * struct_slice)
+                    assert prev_dims == sum(dim_list)
                     structured_inputs = tf.concat(1, sections)
 
                 transform1_w = tf.get_variable("struct_transform1_w", [emb_size,
                                                                        config.hidden_size],
                                                initializer=tf.contrib.layers.xavier_initializer())
-                transform1_b = tf.get_variable("struct_transform1_b", [config.hidden_size],
-                                               initializer=tf.zeros_initializer)
-                structured_inputs = tf.nn.bias_add(tf.matmul(structured_inputs, transform1_w,
-                                                             name='struct_transform1'),
-                                                   transform1_b)
+                structured_inputs = tf.matmul(structured_inputs, transform1_w,
+                                              name='struct_transform1')
 
                 if config.training and config.keep_prob < 1: #XXX this is probably wrong here
                     structured_inputs = tf.nn.dropout(structured_inputs, config.keep_prob)
 
                 if not config.struct_only:
-                    context = tf.concat(1, [context, structured_inputs])
-                    concat_transform_w = tf.get_variable("concat_transform_w",
-                                                         [2 * config.hidden_size,
-                                                          config.hidden_size],
-                                                initializer=tf.contrib.layers.xavier_initializer())
-                    concat_transform_b = tf.get_variable("concat_transform_b",
-                                                         [config.hidden_size],
-                                                         initializer=tf.zeros_initializer)
-                    context = tf.nn.bias_add(tf.matmul(context, concat_transform_w,
-                                                       name='concat_transform'),
-                                             concat_transform_b)
+                    added = context + structured_inputs
+                    concat = tf.concat(1, [context, structured_inputs])
+
+                    # highway network gate
+                    hwgate_w = tf.get_variable("hwgate_w", [2 * config.hidden_size,
+                                                            config.hidden_size],
+                                               initializer=tf.contrib.layers.xavier_initializer())
+                    hwgate_b = tf.get_variable("hwgate_b", [config.hidden_size],
+                                               initializer=tf.zeros_initializer)
+                    hwgate = tf.nn.sigmoid(tf.nn.bias_add(tf.matmul(concat, hwgate_w,
+                                                                    name='hwgate_transform'),
+                                                          hwgate_b))
+
+                    concat_w = tf.get_variable("concat_w", [2 * config.hidden_size,
+                                                            config.hidden_size],
+                                               initializer=tf.contrib.layers.xavier_initializer())
+                    concat_b = tf.get_variable("concat_b", [config.hidden_size],
+                                               initializer=tf.ones_initializer)
+                    nonlin_concat = tf.nn.relu(tf.nn.bias_add(tf.matmul(concat, concat_w,
+                                                                 name='concat_transform'),
+                                                       concat_b))
+                    context = (hwgate * nonlin_concat) + ((1. - hwgate) * added)
                 else:
                     context = structured_inputs
 
