@@ -28,11 +28,15 @@ def print_color(s, color=None):
 
 
 def grouper(n, iterable, fillvalue=None):
+    '''Group elements of iterable in groups of n. For example:
+       >>> [e for e in grouper(3, [1,2,3,4,5,6,7])]
+       [(1, 2, 3), (4, 5, 6), (7, None, None)]'''
     args = [iter(iterable)] * n
     return itertools.izip_longest(*args, fillvalue=fillvalue)
 
 
 def subset(seq, k):
+    '''Return a randomly selected subset of size k from seq'''
     if not 0 <= k <= len(seq):
         for e in seq:
             yield e
@@ -54,6 +58,7 @@ def l2_norm(tensor):
 
 
 def _inspect_losses(x, y, config, vocab, loss, aux, aux_len, dicts):
+    '''Visualize predictions for one window'''
     print_color('[', Colors.HEADER)
     for i in range(config.num_steps // 2):
         print vocab.vocab_list[x[i]],
@@ -100,10 +105,12 @@ losses_buffer = []
 
 def inspect_losses(xs, ys, config, vocab, losses, aux, aux_len, dicts, max_minperp=150.0,
                    buffer_size=1000, sort_helpful='pos'):
+    '''Visualize predictions for a set of windows'''
     import nltk
     global losses_buffer
     for i, (x, y, loss) in enumerate(zip(xs, ys, losses)):
         word = vocab.vocab_list[y]
+        # ignore special tokens and stopwords from visualizations
         if word == '|' or word == '+' or '#' in word or \
                 word in nltk.corpus.stopwords.words('english'):
             continue
@@ -142,6 +149,7 @@ def inspect_losses(xs, ys, config, vocab, losses, aux, aux_len, dicts, max_minpe
 
 
 def make_struct_mappings(dicts):
+    '''Prepare structured info dictionaries for lookups of IDs during visualizations'''
     ret = {}
     for k, v in dicts.items():
         if k == 'D_LABITEMS_DATA_TABLE.csv':
@@ -167,6 +175,8 @@ def make_struct_mappings(dicts):
 
 
 def inspect_compare(config, vocab):
+    '''Visualize the predictions made by the unconditional and conditional model together by
+       loading the results files'''
     with open(config.load_uncond_results, 'rb') as f:
         uncond = pickle.load(f)
     with open(config.load_cond_results, 'rb') as f:
@@ -183,6 +193,7 @@ def inspect_compare(config, vocab):
 
 
 def inspect_feature_embs(feat, embedding, config, vocab, dicts, fd, topk=2500):
+    '''Produce t-SNE figures for embeddings for feature feat, with topk most frequent values'''
     shift = 0
     if feat == 'words':
         vocablist = vocab.vocab_list
@@ -248,6 +259,7 @@ def inspect_feature_embs(feat, embedding, config, vocab, dicts, fd, topk=2500):
 
 
 def inspect_embs(session, m, config, vocab):
+    '''Visualize the learned embeddings for a model'''
     with tf.device("/cpu:0") and tf.variable_scope("model", reuse=True):
         if not config.struct_only:
             with open(pjoin(config.data_path, 'vocab_fd.pk'), 'rb') as f:
@@ -277,6 +289,8 @@ def inspect_embs(session, m, config, vocab):
 
 
 def inspect_transforms(session, m, config):
+    '''Visualize information about the transformations applied to the word embeddings based on the
+       distance'''
     transforms = session.run(m.transforms)
     half = config.num_steps // 2
     for i in xrange(half-1, -1, -1):

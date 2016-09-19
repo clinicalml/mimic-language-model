@@ -16,6 +16,8 @@ import utils
 
 
 class Vocab(object):
+    '''Holds the vocabularies for words and structured information, with forward and reverse
+       mappings'''
     def __init__(self, config):
         random.seed(0) # make deterministic
         print 'Loading vocab ...'
@@ -173,11 +175,15 @@ def _mimic_iterator_unbuffered(config, vocab):
 
 
 def mimic_iterator(config, vocab):
+    '''A generator to read data in a stream without keeping all of it in memory'''
     random.seed(0) # make deterministic
     if config.recurrent:
+        # for recurrent models, no need to buffer anything
         for data in _mimic_iterator_unbuffered(config, vocab):
             yield data
     else:
+        # for non-recurrent models, buffer config.data_rand_buffer windows and yield one at
+        # random from this buffer
         batches = []
         for data in _mimic_iterator_unbuffered(config, vocab):
             batches.append(data)

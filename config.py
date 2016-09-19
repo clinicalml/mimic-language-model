@@ -77,7 +77,7 @@ flags.DEFINE_integer("dims_prescriptions",  126, "Dimensionality for prescriptio
 class Config(object):
     mimic_embeddings = collections.OrderedDict({})
 
-    # additional config
+    # additional config, not configurable by command-line
     fixed_len_features = set(['gender', 'has_dod', 'has_icu_stay', 'admission_type'])
     var_len_features = set(['diagnoses', 'procedures', 'labs', 'prescriptions'])
     testing_splits = range(1)
@@ -85,6 +85,7 @@ class Config(object):
 
 
     def __init__(self):
+        # copy flag values to attributes of this Config object
         for k, v in sorted(flags.FLAGS.__dict__['__flags'].items(), key=lambda x: x[0]):
             setattr(self, k, v)
             if k.startswith('dims_'):
